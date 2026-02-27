@@ -403,6 +403,71 @@
     }
     #empty-state p { font-size: 11px; line-height: 1.8; }
 
+    /* === TOML Config Modal === */
+    .modal-overlay {
+      display: none; position: fixed; inset: 0; z-index: 2000;
+      background: rgba(0,0,0,0.65);
+      justify-content: center; align-items: center;
+      opacity: 0; transition: opacity 0.2s var(--ease);
+    }
+    .modal-overlay.visible { display: flex; opacity: 1; }
+    .modal-panel {
+      background: var(--bg-elevated); border: 1px solid var(--border-bright);
+      border-radius: var(--r-lg); max-width: 600px; width: 90%;
+      max-height: 70vh; display: flex; flex-direction: column;
+      box-shadow: 0 16px 64px rgba(0,0,0,0.5);
+      transform: scale(0.96); opacity: 0;
+      transition: transform 0.2s var(--ease), opacity 0.2s var(--ease);
+    }
+    .modal-overlay.visible .modal-panel { transform: scale(1); opacity: 1; }
+    .modal-header {
+      display: flex; justify-content: space-between; align-items: center;
+      padding: 12px 16px; border-bottom: 1px solid var(--border);
+      flex-shrink: 0;
+    }
+    .modal-title {
+      font-size: 12px; font-weight: 600; color: var(--text-bright);
+      font-family: var(--font-mono); letter-spacing: 0.03em;
+    }
+    .modal-close {
+      background: none; border: 1px solid var(--border); border-radius: 3px;
+      color: var(--text-muted); font-size: 10px; padding: 2px 8px; cursor: pointer;
+      font-family: var(--font-mono); transition: all 0.15s var(--ease);
+    }
+    .modal-close:hover { color: var(--text); border-color: var(--border-bright); }
+    .modal-body {
+      flex: 1; overflow-y: auto; padding: 14px 16px;
+    }
+    .modal-body pre {
+      background: var(--bg-inset); border: 1px solid var(--border);
+      border-radius: var(--r); padding: 12px 14px; margin: 0;
+      overflow-x: auto;
+    }
+    .modal-body pre code {
+      font-size: 12px; font-family: var(--font-mono); color: var(--text);
+      line-height: 1.6; white-space: pre;
+    }
+
+    /* Mise-specific styles */
+    .mise-masked {
+      color: var(--text-dim); font-family: var(--font-mono); font-size: 11px;
+      letter-spacing: 0.02em;
+    }
+    .mise-config-link {
+      background: none; border: 1px solid var(--border); border-radius: 3px;
+      color: var(--teal); font-size: 10px; padding: 2px 8px; cursor: pointer;
+      font-family: var(--font-mono); font-weight: 500;
+      transition: all 0.15s var(--ease); display: inline-block;
+      margin: 2px 3px 2px 0;
+    }
+    .mise-config-link:hover { border-color: var(--teal); background: var(--teal-dim); }
+    .mise-toggle {
+      background: none; border: none; color: var(--teal); cursor: pointer;
+      font-size: 10px; font-family: var(--font-mono); font-weight: 500;
+      padding: 4px 0; opacity: 0.7; transition: opacity 0.15s;
+    }
+    .mise-toggle:hover { opacity: 1; }
+
     /* Teal selection — user interaction color */
     ::selection { background: rgba(58, 158, 143, 0.18); }
     ::-webkit-scrollbar { width: 4px; height: 4px; }
@@ -464,6 +529,16 @@
   </div>
 </div>
 
+<div class="modal-overlay" id="config-modal">
+  <div class="modal-panel">
+    <div class="modal-header">
+      <span class="modal-title" id="config-modal-title"></span>
+      <button class="modal-close" onclick="closeConfigModal()">close</button>
+    </div>
+    <div class="modal-body" id="config-modal-body"></div>
+  </div>
+</div>
+
 <div id="status-bar">
   <span><span class="status-dot disconnected" id="status-dot"></span></span>
   <span id="status-text">connecting</span>
@@ -480,6 +555,8 @@
   let pendingSelection = null;
   let autoScroll = true;
   let globalConfig = null;
+  let miseData = null;
+  let miseLoaded = false;
 
   const PORT = window.location.port || 3377;
   const WS_URL = `ws://${window.location.hostname}:${PORT}/ws`;
@@ -674,7 +751,121 @@
       html += '</div>';
     }
 
+    // Mise section (appended when data is available)
+    html += renderMiseSection();
+
     c.innerHTML = html;
+  }
+
+  // === Mise ===
+  async function loadMise() {
+    if (miseLoaded) return;
+    miseLoaded = true;
+    try {
+      const resp = await fetch(`${API}/api/mise`);
+      miseData = await resp.json();
+      renderSystem();
+    } catch { miseData = null; }
+  }
+
+  function renderMiseSection() {
+    if (!miseData || !miseData.available) return '';
+    let html = '';
+    const COLLAPSE_THRESHOLD = 15;
+
+    // Tools section
+    const toolEntries = Object.entries(miseData.tools || {});
+    if (toolEntries.length > 0) {
+      html += '<div class="sys-section"><div class="sys-section-title">mise tools</div>';
+      // Flatten: each tool name maps to its active versions
+      const toolPills = [];
+      for (const [name, versions] of toolEntries) {
+        const active = versions.filter(v => v.active);
+        const display = active.length > 0 ? active : [versions[0]];
+        for (const v of display) {
+          toolPills.push({ name, version: v.version, active: v.active });
+        }
+      }
+      const showInitial = toolPills.length > COLLAPSE_THRESHOLD ? 10 : toolPills.length;
+      const miseToolsId = 'mise-tools-list';
+      for (let i = 0; i < showInitial; i++) {
+        const p = toolPills[i];
+        html += `<span class="sys-pill on">${esc(p.name)} ${esc(p.version)}</span>`;
+      }
+      if (toolPills.length > COLLAPSE_THRESHOLD) {
+        html += `<span id="${miseToolsId}" style="display:none">`;
+        for (let i = showInitial; i < toolPills.length; i++) {
+          const p = toolPills[i];
+          html += `<span class="sys-pill on">${esc(p.name)} ${esc(p.version)}</span>`;
+        }
+        html += '</span>';
+        html += `<br><button class="mise-toggle" onclick="toggleMiseList('${miseToolsId}', this, ${toolPills.length - showInitial})">show ${toolPills.length - showInitial} more</button>`;
+      }
+      html += '</div>';
+    }
+
+    // Environment section
+    const envEntries = Object.entries(miseData.env || {});
+    if (envEntries.length > 0) {
+      html += '<div class="sys-section"><div class="sys-section-title">mise env</div>';
+      const showInitialEnv = envEntries.length > COLLAPSE_THRESHOLD ? 10 : envEntries.length;
+      const miseEnvId = 'mise-env-list';
+      for (let i = 0; i < showInitialEnv; i++) {
+        const [k, v] = envEntries[i];
+        const valClass = v.masked ? 'mise-masked' : 'val';
+        html += `<div class="sys-item"><span class="name" style="font-family:var(--font-mono);font-size:10px;max-width:45%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${esc(k)}">${esc(k)}</span><span class="${valClass}" title="${v.masked ? 'masked' : esc(v.value)}">${esc(v.value)}</span></div>`;
+      }
+      if (envEntries.length > COLLAPSE_THRESHOLD) {
+        html += `<div id="${miseEnvId}" style="display:none">`;
+        for (let i = showInitialEnv; i < envEntries.length; i++) {
+          const [k, v] = envEntries[i];
+          const valClass = v.masked ? 'mise-masked' : 'val';
+          html += `<div class="sys-item"><span class="name" style="font-family:var(--font-mono);font-size:10px;max-width:45%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${esc(k)}">${esc(k)}</span><span class="${valClass}" title="${v.masked ? 'masked' : esc(v.value)}">${esc(v.value)}</span></div>`;
+        }
+        html += '</div>';
+        html += `<button class="mise-toggle" onclick="toggleMiseList('${miseEnvId}', this, ${envEntries.length - showInitialEnv})">show ${envEntries.length - showInitialEnv} more</button>`;
+      }
+      html += '</div>';
+    }
+
+    // Config files section
+    const configEntries = Object.entries(miseData.configFiles || {});
+    if (configEntries.length > 0) {
+      html += '<div class="sys-section"><div class="sys-section-title">mise config</div>';
+      for (const [filename] of configEntries) {
+        html += `<button class="mise-config-link" onclick="openConfigModal('${esc(filename)}')">${esc(filename)}</button>`;
+      }
+      html += '</div>';
+    }
+
+    return html;
+  }
+
+  function toggleMiseList(id, btn, count) {
+    const el = document.getElementById(id);
+    if (!el) return;
+    const hidden = el.style.display === 'none';
+    el.style.display = hidden ? '' : 'none';
+    btn.textContent = hidden ? 'show less' : `show ${count} more`;
+  }
+
+  function openConfigModal(filename) {
+    const content = miseData && miseData.configFiles && miseData.configFiles[filename];
+    if (!content) return;
+    $('config-modal-title').textContent = filename;
+    // Use highlight.js for TOML if available, otherwise plain text
+    let highlighted;
+    try {
+      highlighted = hljs.getLanguage('toml')
+        ? hljs.highlight(content, { language: 'toml' }).value
+        : hljs.highlightAuto(content).value;
+    } catch { highlighted = esc(content); }
+    $('config-modal-body').innerHTML = '<pre><code>' + highlighted + '</code></pre>';
+    $('config-modal').classList.add('visible');
+  }
+
+  function closeConfigModal() {
+    $('config-modal').classList.remove('visible');
   }
 
   // === Tabs ===
@@ -777,6 +968,8 @@
     document.querySelectorAll('.sidebar-panel').forEach(p => p.classList.remove('active'));
     el.classList.add('active');
     $(el.dataset.panel).classList.add('active');
+    // Lazy-load mise data when System tab is opened
+    if (el.dataset.panel === 'system-panel') loadMise();
   }
 
   // === Annotation Popup ===
@@ -799,8 +992,12 @@
   $('popup-cancel').addEventListener('click', hidePopup);
   $('popup-submit').addEventListener('click', submitAnnotation);
   document.addEventListener('keydown', (e) => {
-    if (e.key === 'Escape') hidePopup();
+    if (e.key === 'Escape') { hidePopup(); closeConfigModal(); }
     if (e.key === 'Enter' && e.metaKey && $('annotation-popup').classList.contains('visible')) submitAnnotation();
+  });
+  // Close config modal on overlay click
+  $('config-modal').addEventListener('click', (e) => {
+    if (e.target === $('config-modal')) closeConfigModal();
   });
 
   async function submitAnnotation() {
