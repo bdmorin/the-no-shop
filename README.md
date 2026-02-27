@@ -53,11 +53,39 @@ Four hooks. One daemon. One browser tab. That's the whole machine.
 
 ## 📦 Installation
 
+### Step 1: Add the marketplace
+
+From the Claude Code CLI:
+
 ```bash
-claude plugin install bdmorin/the-no-shop
+claude plugin marketplace add bdmorin/the-no-shop
 ```
 
-That's it. Next time you start a Claude Code session, the Foldspace daemon spins up and you can open `http://localhost:3377` in your browser.
+Or from inside a Claude Code session, ask Claude:
+
+```
+/install plugin from bdmorin/the-no-shop
+```
+
+### Step 2: Install the plugin
+
+```bash
+claude plugin install foldspace-console@the-no-shop
+```
+
+### Step 3: There is no step 3
+
+Next time you start a Claude Code session, the Foldspace daemon spins up automatically. Open `http://localhost:3377` in your browser.
+
+#### 🔍 Verify installation
+
+```bash
+# List configured marketplaces
+claude plugin marketplace list
+
+# List installed plugins
+claude plugin list
+```
 
 #### Manual start (if needed)
 
@@ -79,9 +107,10 @@ bun run daemon/index.ts
 
 Foldspace Console ships with a dark theme inspired by the machine workshops of Ix:
 
-- **Spice amber** accents on deep void backgrounds
-- **Metallic steel** for secondary elements
-- **JetBrains Mono** for code, **Inter** for prose
+- **Spice amber** accents on deep void backgrounds — brand accent, used sparingly
+- **Teal** as the signal/interaction color
+- **IBM Plex Mono** for code and data, **Instrument Sans** for prose
+- Borders you can barely see. SVG noise overlay for depth. 150ms mechanical transitions.
 - Minimal chrome. Maximum signal.
 
 ---
