@@ -466,6 +466,48 @@ const server = Bun.serve({
   },
 });
 
+// --- Session stats heartbeat ---
+// Every 8 seconds, re-scan active session transcripts and push updates if changed
+
+const HEARTBEAT_INTERVAL = 8000;
+
+setInterval(async () => {
+  if (wsClients.size === 0) return; // No browsers connected, skip work
+
+  for (const [sid, meta] of sessions) {
+    if (!meta.transcriptPath) continue;
+
+    try {
+      const stats = await scanTranscript(meta.transcriptPath);
+      const changed =
+        stats.totalTokensIn !== meta.totalTokensIn ||
+        stats.totalTokensOut !== meta.totalTokensOut ||
+        stats.turnCount !== meta.turnCount;
+
+      if (changed) {
+        meta.totalTokensIn = stats.totalTokensIn;
+        meta.totalTokensOut = stats.totalTokensOut;
+        meta.turnCount = stats.turnCount;
+        if (stats.model) meta.model = stats.model;
+        if (stats.claudeVersion) meta.claudeVersion = stats.claudeVersion;
+        meta.lastActivity = Date.now();
+
+        broadcast({
+          type: "session_stats_update",
+          data: {
+            sessionId: sid,
+            totalTokensIn: meta.totalTokensIn,
+            totalTokensOut: meta.totalTokensOut,
+            turnCount: meta.turnCount,
+          },
+        });
+      }
+    } catch {
+      // Transcript might not exist yet or be mid-write; silently skip
+    }
+  }
+}, HEARTBEAT_INTERVAL);
+
 console.log(`Foldspace Console daemon on http://localhost:${PORT}`);
 console.log(`WebSocket on ws://localhost:${PORT}/ws`);
 console.log(`Open http://localhost:${PORT} in your browser`);
