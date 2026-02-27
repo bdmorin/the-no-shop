@@ -145,6 +145,33 @@
     .sh-grid .ml { color: var(--text-dim); font-weight: 500; font-size: 11px; }
     .sh-grid .mv { color: var(--text-muted); font-family: var(--font-mono); font-size: 11px; }
 
+    /* Git status row */
+    .sh-git {
+      display: flex; align-items: center; gap: 10px; margin-top: 5px;
+      font-family: var(--font-mono); font-size: 11px; font-weight: 500;
+      letter-spacing: 0.01em;
+    }
+    .sh-git-branch {
+      color: var(--teal); overflow: hidden; text-overflow: ellipsis;
+      white-space: nowrap; max-width: 200px;
+    }
+    .sh-git-sync { color: var(--text-muted); }
+    .sh-git-sync .ahead { color: var(--teal); }
+    .sh-git-sync .behind { color: var(--amber); }
+    .sh-git-files { display: flex; gap: 8px; }
+    .sh-git-files .gs { letter-spacing: 0; }
+    .sh-git-files .gs-staged { color: var(--teal); }
+    .sh-git-files .gs-modified { color: var(--amber); }
+    .sh-git-files .gs-untracked { color: var(--text-muted); }
+    .sh-git-files .gs-conflicted { color: var(--red); }
+    .sh-git-clean { color: var(--teal); opacity: 0.5; font-size: 10px; }
+    .sh-git-dot {
+      width: 5px; height: 5px; border-radius: 50%; flex-shrink: 0;
+    }
+    .sh-git-dot.clean { background: var(--teal); opacity: 0.5; }
+    .sh-git-dot.dirty { background: var(--amber); opacity: 0.7; }
+    .sh-git-dot.conflict { background: var(--red); opacity: 0.7; }
+
     /* === Response Stream === */
     #responses-area { flex: 1; overflow-y: auto; padding: 24px 36px 80px; }
 
@@ -517,6 +544,7 @@
       if (m.type === 'session_ended') onSessionEnded(m.data);
       if (m.type === 'new_response') onNewResponse(m.data);
       if (m.type === 'annotation_added') onAnnotationAdded(m.data);
+      if (m.type === 'session_git_status') onSessionGitStatus(m.data);
     };
   }
 
@@ -569,6 +597,17 @@
     if (!allAnnotations.has(sid)) allAnnotations.set(sid, []);
     allAnnotations.get(sid).push(ann);
     if (sid === activeSessionId) renderAnnotations();
+  }
+
+  function onSessionGitStatus(data) {
+    const m = sessions.get(data.sessionId);
+    if (m) {
+      m.gitStatus = data.gitStatus;
+      if (data.gitStatus && data.gitStatus.branch) {
+        m.gitBranch = data.gitStatus.branch;
+      }
+    }
+    if (data.sessionId === activeSessionId) renderSessionHeader();
   }
 
   // === Config ===
@@ -724,7 +763,43 @@
         ${mi('branch', m.gitBranch||'-')}${mi('repo', m.gitRepo||'-')}${mi('started', started)}
         ${mi('turns', m.turnCount||0)}${mi('in', formatTokens(m.totalTokensIn||0))}${mi('out', formatTokens(m.totalTokensOut||0))}
         ${m.claudeVersion ? mi('cc', m.claudeVersion) : ''}
-      </div>`;
+      </div>
+      ${renderGitStatus(m.gitStatus)}`;
+  }
+
+  function renderGitStatus(gs) {
+    if (!gs) return '';
+    const parts = [];
+
+    // Status dot
+    const dotClass = gs.conflicted > 0 ? 'conflict' :
+                     (gs.staged + gs.modified + gs.untracked > 0) ? 'dirty' : 'clean';
+    parts.push(`<span class="sh-git-dot ${dotClass}"></span>`);
+
+    // Branch name
+    parts.push(`<span class="sh-git-branch">${esc(gs.branch || '(detached)')}</span>`);
+
+    // Ahead/behind
+    const syncParts = [];
+    if (gs.ahead > 0) syncParts.push(`<span class="ahead">&uarr;${gs.ahead}</span>`);
+    if (gs.behind > 0) syncParts.push(`<span class="behind">&darr;${gs.behind}</span>`);
+    if (syncParts.length > 0) {
+      parts.push(`<span class="sh-git-sync">${syncParts.join(' ')}</span>`);
+    }
+
+    // File counts
+    const fileParts = [];
+    if (gs.staged > 0) fileParts.push(`<span class="gs gs-staged">+${gs.staged}</span>`);
+    if (gs.modified > 0) fileParts.push(`<span class="gs gs-modified">~${gs.modified}</span>`);
+    if (gs.untracked > 0) fileParts.push(`<span class="gs gs-untracked">?${gs.untracked}</span>`);
+    if (gs.conflicted > 0) fileParts.push(`<span class="gs gs-conflicted">!${gs.conflicted}</span>`);
+    if (fileParts.length > 0) {
+      parts.push(`<span class="sh-git-files">${fileParts.join('')}</span>`);
+    } else if (dotClass === 'clean') {
+      parts.push(`<span class="sh-git-clean">clean</span>`);
+    }
+
+    return `<div class="sh-git">${parts.join('')}</div>`;
   }
 
   function mi(l,v) { return `<span class="mi"><span class="ml">${l}</span><span class="mv">${esc(String(v))}</span></span>`; }
@@ -777,6 +852,8 @@
     document.querySelectorAll('.sidebar-panel').forEach(p => p.classList.remove('active'));
     el.classList.add('active');
     $(el.dataset.panel).classList.add('active');
+    // Lazy-load mise data when System tab is opened
+    if (el.dataset.panel === 'system-panel') loadMise();
   }
 
   // === Annotation Popup ===
@@ -799,8 +876,12 @@
   $('popup-cancel').addEventListener('click', hidePopup);
   $('popup-submit').addEventListener('click', submitAnnotation);
   document.addEventListener('keydown', (e) => {
-    if (e.key === 'Escape') hidePopup();
+    if (e.key === 'Escape') { hidePopup(); closeConfigModal(); }
     if (e.key === 'Enter' && e.metaKey && $('annotation-popup').classList.contains('visible')) submitAnnotation();
+  });
+  // Close config modal on overlay click
+  $('config-modal').addEventListener('click', (e) => {
+    if (e.target === $('config-modal')) closeConfigModal();
   });
 
   async function submitAnnotation() {
