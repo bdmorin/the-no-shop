@@ -34,6 +34,7 @@ interface SessionMeta {
   totalTokensIn: number;
   totalTokensOut: number;
   turnCount: number;
+  gitStatus?: GitStatus | null;
 }
 
 interface Response {
@@ -53,6 +54,16 @@ interface Annotation {
   timestamp: number;
 }
 
+interface GitStatus {
+  branch: string;
+  ahead: number;
+  behind: number;
+  staged: number;
+  modified: number;
+  untracked: number;
+  conflicted: number;
+}
+
 // --- Per-session stores ---
 
 const sessions = new Map<string, SessionMeta>();
@@ -61,6 +72,13 @@ const annotationsBySession = new Map<string, Annotation[]>();
 
 // Connected WebSocket clients
 const wsClients = new Set<any>();
+
+// Git status cache: keyed by repo root path
+const gitStatusCache = new Map<string, GitStatus>();
+// Map from cwd -> resolved git repo root (or null if not a repo)
+const cwdToRepoRoot = new Map<string, string | null>();
+// Active polling intervals keyed by repo root
+const gitPollingIntervals = new Map<string, Timer>();
 
 // Load the SPA HTML
 const spaPath = new URL("../web/index.html", import.meta.url).pathname;
@@ -99,6 +117,155 @@ async function getGitInfo(cwd: string): Promise<{ branch?: string; remote?: stri
   } catch {
     return {};
   }
+}
+
+// Resolve the git repo root for a directory, with caching
+async function resolveRepoRoot(cwd: string): Promise<string | null> {
+  if (cwdToRepoRoot.has(cwd)) return cwdToRepoRoot.get(cwd)!;
+  try {
+    const proc = Bun.spawn(["git", "-C", cwd, "rev-parse", "--show-toplevel"], {
+      stdout: "pipe",
+      stderr: "pipe",
+    });
+    const timeout = setTimeout(() => proc.kill(), 5000);
+    const exitCode = await proc.exited;
+    clearTimeout(timeout);
+    if (exitCode !== 0) {
+      cwdToRepoRoot.set(cwd, null);
+      return null;
+    }
+    const root = (await new Response(proc.stdout).text()).trim();
+    cwdToRepoRoot.set(cwd, root);
+    return root;
+  } catch {
+    cwdToRepoRoot.set(cwd, null);
+    return null;
+  }
+}
+
+// Parse git status --porcelain=v2 --branch output into a GitStatus object
+function parseGitStatusOutput(output: string): GitStatus {
+  const status: GitStatus = {
+    branch: "",
+    ahead: 0,
+    behind: 0,
+    staged: 0,
+    modified: 0,
+    untracked: 0,
+    conflicted: 0,
+  };
+
+  for (const line of output.split("\n")) {
+    if (!line) continue;
+
+    // Branch headers
+    if (line.startsWith("# branch.head ")) {
+      status.branch = line.slice("# branch.head ".length);
+    } else if (line.startsWith("# branch.ab ")) {
+      const match = line.match(/# branch\.ab \+(\d+) -(\d+)/);
+      if (match) {
+        status.ahead = parseInt(match[1], 10);
+        status.behind = parseInt(match[2], 10);
+      }
+    }
+    // Ordinary changed entries: "1 XY ..." or renamed "2 XY ..."
+    else if (line.startsWith("1 ") || line.startsWith("2 ")) {
+      const xy = line.split(" ")[1];
+      if (xy && xy.length === 2) {
+        const [x, y] = xy;
+        // X = index (staged), Y = worktree (modified)
+        if (x !== ".") status.staged++;
+        if (y !== ".") status.modified++;
+      }
+    }
+    // Unmerged (conflicted) entries
+    else if (line.startsWith("u ")) {
+      status.conflicted++;
+    }
+    // Untracked
+    else if (line.startsWith("? ")) {
+      status.untracked++;
+    }
+  }
+
+  return status;
+}
+
+// Compare two git status objects for equality
+function gitStatusEqual(a: GitStatus | null | undefined, b: GitStatus | null | undefined): boolean {
+  if (a === b) return true;
+  if (!a || !b) return false;
+  return (
+    a.branch === b.branch &&
+    a.ahead === b.ahead &&
+    a.behind === b.behind &&
+    a.staged === b.staged &&
+    a.modified === b.modified &&
+    a.untracked === b.untracked &&
+    a.conflicted === b.conflicted
+  );
+}
+
+// Fetch current git status for a repo root, with a 5-second timeout
+async function fetchGitStatus(repoRoot: string): Promise<GitStatus | null> {
+  try {
+    const proc = Bun.spawn(
+      ["git", "-C", repoRoot, "status", "--porcelain=v2", "--branch"],
+      { stdout: "pipe", stderr: "pipe" }
+    );
+    const timeout = setTimeout(() => proc.kill(), 5000);
+    const exitCode = await proc.exited;
+    clearTimeout(timeout);
+    if (exitCode !== 0) return null;
+    const output = await new Response(proc.stdout).text();
+    return parseGitStatusOutput(output);
+  } catch {
+    return null;
+  }
+}
+
+// Start polling git status for a given repo root (if not already polling)
+function startGitPolling(repoRoot: string): void {
+  if (gitPollingIntervals.has(repoRoot)) return;
+
+  // Run immediately on first registration
+  pollGitStatus(repoRoot);
+
+  const interval = setInterval(() => pollGitStatus(repoRoot), 10_000);
+  gitPollingIntervals.set(repoRoot, interval);
+}
+
+// Single poll cycle: fetch, compare, broadcast if changed
+async function pollGitStatus(repoRoot: string): Promise<void> {
+  const newStatus = await fetchGitStatus(repoRoot);
+  if (!newStatus) return;
+
+  const cached = gitStatusCache.get(repoRoot);
+  if (gitStatusEqual(cached, newStatus)) return;
+
+  gitStatusCache.set(repoRoot, newStatus);
+
+  // Update all sessions whose cwd maps to this repo root
+  for (const [sid, meta] of sessions) {
+    const root = cwdToRepoRoot.get(meta.cwd);
+    if (root === repoRoot) {
+      meta.gitStatus = newStatus;
+      broadcast({ type: "session_git_status", data: { sessionId: sid, gitStatus: newStatus } });
+    }
+  }
+}
+
+// Stop polling for a repo root if no sessions reference it anymore
+function maybeStopGitPolling(repoRoot: string): void {
+  for (const meta of sessions.values()) {
+    if (cwdToRepoRoot.get(meta.cwd) === repoRoot) return; // still referenced
+  }
+  const interval = gitPollingIntervals.get(repoRoot);
+  if (interval) {
+    clearInterval(interval);
+    gitPollingIntervals.delete(repoRoot);
+  }
+  gitStatusCache.delete(repoRoot);
 }
 
 // Read global Claude Code config
@@ -276,6 +443,15 @@ const server = Bun.serve({
       sessions.set(sid, meta);
       ensureSession(sid);
 
+      // Start git status polling for this session's working directory
+      const repoRoot = await resolveRepoRoot(meta.cwd || ".");
+      if (repoRoot) {
+        // Seed from cache if available
+        const cached = gitStatusCache.get(repoRoot);
+        if (cached) meta.gitStatus = cached;
+        startGitPolling(repoRoot);
+      }
+
       broadcast({ type: "session_started", data: meta });
 
       return Response.json({ ok: true }, { headers: corsHeaders });
@@ -420,6 +596,19 @@ const server = Bun.serve({
         if (stats.claudeVersion) meta.claudeVersion = stats.claudeVersion;
       }
       broadcast({ type: "session_ended", data: { sessionId: sid, reason: body.reason } });
+
+      // Clean up git polling if no other sessions share this repo root
+      if (meta) {
+        const root = cwdToRepoRoot.get(meta.cwd);
+        if (root) {
+          // Remove this session so maybeStopGitPolling sees it as gone
+          sessions.delete(sid);
+          maybeStopGitPolling(root);
+          // Put it back (ended sessions may still be viewed)
+          sessions.set(sid, meta);
+        }
+      }
+
       return Response.json({ ok: true }, { headers: corsHeaders });
     }
 
