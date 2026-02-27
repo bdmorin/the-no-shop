@@ -61,10 +61,10 @@ From the Claude Code CLI:
 claude plugin marketplace add bdmorin/the-no-shop
 ```
 
-Or from inside a Claude Code session, ask Claude:
+Or from inside a Claude Code session:
 
 ```
-/install plugin from bdmorin/the-no-shop
+/plugin marketplace add bdmorin/the-no-shop
 ```
 
 ### Step 2: Install the plugin
