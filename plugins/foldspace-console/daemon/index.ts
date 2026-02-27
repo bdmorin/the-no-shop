@@ -8,6 +8,7 @@
  * - Stores pending annotations per-session from browser
  * - Serves annotations to UserPromptSubmit hook (per-session)
  * - Reads filesystem metadata (settings, plugins, skills, git)
+ * - Reads mise tool/environment configuration
  * - Serves the web SPA
  */
 
@@ -79,6 +80,99 @@ const gitStatusCache = new Map<string, GitStatus>();
 const cwdToRepoRoot = new Map<string, string | null>();
 // Active polling intervals keyed by repo root
 const gitPollingIntervals = new Map<string, Timer>();
+
+// --- Mise cache ---
+// 30-second TTL: mise config rarely changes mid-session
+let miseCache: { data: any; ts: number } | null = null;
+const MISE_CACHE_TTL = 30_000;
+
+// Secret masking: any env key matching these patterns gets masked
+const SECRET_KEY_PATTERN = /KEY|SECRET|TOKEN|PASSWORD|CREDENTIAL|API/i;
+
+function maskSecret(value: string): string {
+  if (value.length < 12) return "****";
+  return value.slice(0, 4) + "****" + value.slice(-4);
+}
+
+// Run a command with timeout, returning stdout or null on failure
+async function runWithTimeout(cmd: string[], timeoutMs: number): Promise<string | null> {
+  try {
+    const proc = Bun.spawn(cmd, { stdout: "pipe", stderr: "pipe" });
+    const timer = setTimeout(() => proc.kill(), timeoutMs);
+    const exitCode = await proc.exited;
+    clearTimeout(timer);
+    if (exitCode !== 0) return null;
+    return await new Response(proc.stdout).text();
+  } catch {
+    return null;
+  }
+}
+
+// Gather mise data: installed tools, env vars, config files
+async function fetchMiseData(): Promise<any> {
+  if (miseCache && (Date.now() - miseCache.ts) < MISE_CACHE_TTL) {
+    return miseCache.data;
+  }
+
+  const versionOut = await runWithTimeout(["mise", "--version"], 5000);
+  if (versionOut === null) {
+    const result = { available: false };
+    miseCache = { data: result, ts: Date.now() };
+    return result;
+  }
+
+  const [toolsRaw, envRaw] = await Promise.all([
+    runWithTimeout(["mise", "ls", "--json"], 5000),
+    runWithTimeout(["mise", "env", "--json"], 5000),
+  ]);
+
+  let tools: Record<string, any[]> = {};
+  if (toolsRaw) {
+    try { tools = JSON.parse(toolsRaw); } catch {}
+  }
+
+  let env: Record<string, string> = {};
+  let envMasked: Record<string, { value: string; masked: boolean }> = {};
+  if (envRaw) {
+    try { env = JSON.parse(envRaw); } catch {}
+  }
+  for (const [key, val] of Object.entries(env)) {
+    if (key === "PATH") continue;
+    const isSensitive = SECRET_KEY_PATTERN.test(key);
+    envMasked[key] = {
+      value: isSensitive ? maskSecret(val) : val,
+      masked: isSensitive,
+    };
+  }
+
+  let configFiles: Record<string, string> = {};
+  const cwds = new Set<string>();
+  for (const meta of sessions.values()) {
+    if (meta.cwd) cwds.add(meta.cwd);
+  }
+  cwds.add(process.cwd());
+
+  for (const cwd of cwds) {
+    for (const filename of [".mise.toml", ".mise.local.toml"]) {
+      if (configFiles[filename]) continue;
+      try {
+        const content = await Bun.file(`${cwd}/${filename}`).text();
+        if (content) configFiles[filename] = content;
+      } catch {}
+    }
+  }
+
+  const result = {
+    available: true,
+    version: versionOut.trim(),
+    tools,
+    env: envMasked,
+    configFiles,
+  };
+
+  miseCache = { data: result, ts: Date.now() };
+  return result;
+}
 
 // Load the SPA HTML
 const spaPath = new URL("../web/index.html", import.meta.url).pathname;
@@ -572,6 +666,12 @@ const server = Bun.serve({
     if (url.pathname === "/api/config" && req.method === "GET") {
       const config = await getGlobalConfig();
       return Response.json(config, { headers: corsHeaders });
+    }
+
+    // --- Mise tool/environment data ---
+    if (url.pathname === "/api/mise" && req.method === "GET") {
+      const data = await fetchMiseData();
+      return Response.json(data, { headers: corsHeaders });
     }
 
     // --- Health ---
