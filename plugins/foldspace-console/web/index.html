@@ -94,25 +94,86 @@
       transition: color 0.3s var(--ease);
     }
     #tab-bar-brand:hover { color: var(--amber); }
-    #tab-bar-tabs { display: flex; flex: 1; overflow-x: auto; }
-    #tab-bar-tabs::-webkit-scrollbar { height: 0; }
+    #tab-bar-tabs { display: flex; flex: 1; overflow: hidden; position: relative; }
 
     .tab {
       padding: 0 16px; font-size: 13px; font-weight: 500;
       color: var(--text-muted); border-bottom: 1px solid transparent;
       cursor: pointer; white-space: nowrap; display: flex;
-      align-items: center; gap: 7px; transition: all 0.15s var(--ease);
-      user-select: none;
+      align-items: center; gap: 7px;
+      transition: transform 180ms var(--ease), opacity 180ms var(--ease),
+                  color 150ms var(--ease), background 150ms var(--ease),
+                  border-color 150ms var(--ease);
+      user-select: none; flex-shrink: 0;
     }
     .tab:hover { color: var(--text); background: var(--bg-hover); }
     .tab.active { color: var(--teal); border-bottom-color: var(--teal); }
-    .tab-dot { width: 5px; height: 5px; border-radius: 50%; background: var(--teal); flex-shrink: 0; opacity: 0.7; }
-    .tab-dot.ended { background: var(--text-dim); opacity: 0.4; }
+
+    /* State: recent activity (< 5 min) */
+    .tab.state-recent { color: var(--text-bright); }
+    .tab.state-recent .tab-dot { background: var(--teal-bright); opacity: 1; }
+
+    /* State: idle (5 min - 6 hrs) */
+    .tab.state-idle .tab-dot { background: var(--teal); opacity: 0.4; }
+
+    /* State: ended session */
+    .tab.state-ended { color: var(--text-dim); font-style: italic; }
+    .tab.state-ended .tab-dot { display: none; }
+
+    .tab-dot {
+      width: 5px; height: 5px; border-radius: 50%;
+      background: var(--teal); flex-shrink: 0; opacity: 0.7;
+      transition: background 180ms var(--ease), opacity 180ms var(--ease);
+    }
     .tab-badge {
       font-size: 10px; background: var(--teal-dim); color: var(--teal);
       padding: 0 5px; border-radius: 4px; font-weight: 600;
       font-family: var(--font-mono); font-variant-numeric: tabular-nums;
     }
+
+    /* Overflow button */
+    .tab-overflow-btn {
+      display: flex; align-items: center; padding: 0 12px;
+      font-size: 12px; font-weight: 600; color: var(--text-dim);
+      cursor: pointer; white-space: nowrap; flex-shrink: 0;
+      font-family: var(--font-mono); letter-spacing: 0.02em;
+      transition: color 150ms var(--ease), background 150ms var(--ease);
+      user-select: none; border-left: 1px solid var(--border);
+    }
+    .tab-overflow-btn:hover { color: var(--text-muted); background: var(--bg-hover); }
+
+    /* Overflow dropdown */
+    .tab-overflow-dropdown {
+      position: absolute; top: 100%; right: 0; z-index: 500;
+      background: var(--bg-elevated); border: 1px solid var(--border);
+      border-radius: 0 0 var(--r-lg) var(--r-lg);
+      box-shadow: 0 8px 24px rgba(0,0,0,0.4);
+      min-width: 240px; max-height: 320px; overflow-y: auto;
+      display: none;
+    }
+    .tab-overflow-dropdown.visible { display: block; }
+    .tab-overflow-item {
+      display: flex; align-items: center; gap: 8px;
+      padding: 8px 14px; cursor: pointer; font-size: 12px;
+      transition: background 120ms var(--ease);
+    }
+    .tab-overflow-item:hover { background: var(--bg-hover); }
+    .tab-overflow-item .toi-label {
+      flex: 1; color: var(--text-muted); font-weight: 500;
+      overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+    }
+    .tab-overflow-item .toi-time {
+      font-size: 10px; color: var(--text-dim); font-family: var(--font-mono);
+      flex-shrink: 0;
+    }
+    .tab-overflow-item .toi-dot {
+      width: 4px; height: 4px; border-radius: 50%; flex-shrink: 0;
+    }
+    .tab-overflow-item.state-recent .toi-label { color: var(--text-bright); }
+    .tab-overflow-item.state-recent .toi-dot { background: var(--teal-bright); }
+    .tab-overflow-item.state-idle .toi-dot { background: var(--teal); opacity: 0.4; }
+    .tab-overflow-item.state-ended .toi-label { color: var(--text-dim); font-style: italic; }
+    .tab-overflow-item.state-ended .toi-dot { background: transparent; }
 
     /* === Main Layout === */
     #main { display: flex; flex: 1; overflow: hidden; }
@@ -734,34 +795,81 @@
   }
 
   // === Tabs ===
-  const prevBadgeCounts = new Map(); // Track previous badge values for animation
+  const prevBadgeCounts = new Map();
+  const TAB_RECENT_MS = 5 * 60 * 1000;     // 5 min
+  const TAB_EXPIRY_MS = 6 * 60 * 60 * 1000; // 6 hrs
+  const TAB_MAX_VISIBLE = 8;
+
+  function tabState(session) {
+    if (session._ended) return 'ended';
+    const age = Date.now() - (session.lastActivity || session.startedAt || 0);
+    if (age < TAB_RECENT_MS) return 'recent';
+    return 'idle';
+  }
+
+  function tabVisible(session) {
+    if (session.sessionId === activeSessionId) return true;
+    const age = Date.now() - (session.lastActivity || session.startedAt || 0);
+    return age < TAB_EXPIRY_MS;
+  }
+
+  function formatAge(ts) {
+    const diff = Date.now() - ts;
+    if (diff < 60000) return 'now';
+    if (diff < 3600000) return Math.floor(diff / 60000) + 'm ago';
+    if (diff < 86400000) return Math.floor(diff / 3600000) + 'h ago';
+    return Math.floor(diff / 86400000) + 'd ago';
+  }
 
   function renderTabs() {
     const bar = $('tab-bar-tabs');
     bar.innerHTML = '';
     const badgesToAnimate = [];
-    [...sessions.values()].sort((a,b) => a.startedAt - b.startedAt).forEach(s => {
-      const t = document.createElement('div');
-      t.className = 'tab' + (s.sessionId === activeSessionId ? ' active' : '');
-      const dot = s._ended ? 'tab-dot ended' : 'tab-dot';
-      const label = sessionLabel(s);
-      const rc = (responses.get(s.sessionId) || []).length;
-      const badgeId = 'tab-badge-' + s.sessionId.slice(0,8);
-      const badge = rc > 0 && s.sessionId !== activeSessionId
-        ? `<span class="tab-badge animated-num" id="${badgeId}" data-raw-value="${rc}">${rc}</span>` : '';
-      t.innerHTML = `<span class="${dot}"></span>${esc(label)}${badge}`;
-      t.onclick = () => switchSession(s.sessionId);
-      bar.appendChild(t);
 
-      // Queue animation if badge is visible and value changed
-      if (rc > 0 && s.sessionId !== activeSessionId) {
-        const prev = prevBadgeCounts.get(s.sessionId) || 0;
-        if (prev !== rc && prev > 0) {
-          badgesToAnimate.push({ id: badgeId, oldVal: prev, newVal: rc });
-        }
-        prevBadgeCounts.set(s.sessionId, rc);
-      }
+    // Sort all sessions by last activity, most recent first
+    const sorted = [...sessions.values()].sort((a, b) =>
+      (b.lastActivity || b.startedAt || 0) - (a.lastActivity || a.startedAt || 0)
+    );
+
+    const visible = sorted.filter(tabVisible);
+    const hidden = sorted.filter(s => !tabVisible(s));
+
+    const barTabs = visible.slice(0, TAB_MAX_VISIBLE);
+    const overflowTabs = visible.slice(TAB_MAX_VISIBLE);
+    const allOverflow = [...overflowTabs, ...hidden];
+
+    barTabs.forEach(s => {
+      bar.appendChild(buildTabEl(s, badgesToAnimate));
     });
+
+    if (allOverflow.length > 0) {
+      const overflowBtn = document.createElement('div');
+      overflowBtn.className = 'tab-overflow-btn';
+      overflowBtn.textContent = '+' + allOverflow.length;
+      overflowBtn.onclick = (e) => {
+        e.stopPropagation();
+        toggleOverflowDropdown();
+      };
+      bar.appendChild(overflowBtn);
+
+      const dropdown = document.createElement('div');
+      dropdown.className = 'tab-overflow-dropdown';
+      dropdown.id = 'tab-overflow-dropdown';
+      allOverflow.forEach(s => {
+        const item = document.createElement('div');
+        const state = tabState(s);
+        item.className = 'tab-overflow-item state-' + state;
+        const label = sessionLabel(s);
+        const lastTs = s.lastActivity || s.startedAt || 0;
+        item.innerHTML = `<span class="toi-dot"></span><span class="toi-label">${esc(label)}</span><span class="toi-time">${formatAge(lastTs)}</span>`;
+        item.onclick = () => {
+          switchSession(s.sessionId);
+          closeOverflowDropdown();
+        };
+        dropdown.appendChild(item);
+      });
+      bar.appendChild(dropdown);
+    }
 
     // Animate badge counts after DOM is built
     badgesToAnimate.forEach(({ id, oldVal, newVal }) => {
@@ -769,6 +877,47 @@
       if (el) animateValue(el, oldVal, newVal, 400, String);
     });
   }
+
+  function buildTabEl(session, badgesToAnimate) {
+    const state = tabState(session);
+    const isActive = session.sessionId === activeSessionId;
+    const t = document.createElement('div');
+    t.className = 'tab state-' + state + (isActive ? ' active' : '');
+    const label = sessionLabel(session);
+    const rc = (responses.get(session.sessionId) || []).length;
+    const badgeId = 'tab-badge-' + session.sessionId.slice(0,8);
+    const badge = rc > 0 && !isActive
+      ? `<span class="tab-badge animated-num" id="${badgeId}" data-raw-value="${rc}">${rc}</span>` : '';
+    t.innerHTML = `<span class="tab-dot"></span>${esc(label)}${badge}`;
+    t.onclick = () => switchSession(session.sessionId);
+
+    // Queue animation if badge value changed
+    if (badgesToAnimate && rc > 0 && !isActive) {
+      const prev = prevBadgeCounts.get(session.sessionId) || 0;
+      if (prev !== rc && prev > 0) {
+        badgesToAnimate.push({ id: badgeId, oldVal: prev, newVal: rc });
+      }
+      prevBadgeCounts.set(session.sessionId, rc);
+    }
+    return t;
+  }
+
+  function toggleOverflowDropdown() {
+    const dd = $('tab-overflow-dropdown');
+    if (dd) dd.classList.toggle('visible');
+  }
+
+  function closeOverflowDropdown() {
+    const dd = $('tab-overflow-dropdown');
+    if (dd) dd.classList.remove('visible');
+  }
+
+  // Close overflow dropdown when clicking outside
+  document.addEventListener('click', (e) => {
+    if (!e.target.closest('.tab-overflow-btn') && !e.target.closest('.tab-overflow-dropdown')) {
+      closeOverflowDropdown();
+    }
+  });
 
   function sessionLabel(m) {
     if (m.gitRepo) return m.gitRepo.split('/').pop();
