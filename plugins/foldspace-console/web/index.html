@@ -111,7 +111,7 @@
     .tab-badge {
       font-size: 10px; background: var(--teal-dim); color: var(--teal);
       padding: 0 5px; border-radius: 4px; font-weight: 600;
-      font-family: var(--font-mono);
+      font-family: var(--font-mono); font-variant-numeric: tabular-nums;
     }
 
     /* === Main Layout === */
@@ -143,7 +143,7 @@
     }
     .sh-grid .mi { display: flex; gap: 4px; align-items: baseline; }
     .sh-grid .ml { color: var(--text-dim); font-weight: 500; font-size: 11px; }
-    .sh-grid .mv { color: var(--text-muted); font-family: var(--font-mono); font-size: 11px; }
+    .sh-grid .mv { color: var(--text-muted); font-family: var(--font-mono); font-size: 11px; font-variant-numeric: tabular-nums; }
 
     /* Git status row */
     .sh-git {
@@ -350,9 +350,15 @@
     .sys-pill.off { background: rgba(158,58,58,0.06); color: var(--text-dim); text-decoration: line-through; }
     .sys-pill.hook { background: rgba(158,138,58,0.07); color: var(--yellow); }
     .sys-pill.mcp { background: rgba(58,158,143,0.07); color: var(--teal); }
+    .animated-num {
+      font-variant-numeric: tabular-nums;
+      display: inline-block;
+      min-width: 0;
+    }
     .sys-stat {
       font-size: 18px; font-weight: 600; color: var(--text-bright);
       font-family: var(--font-mono); letter-spacing: -0.02em;
+      font-variant-numeric: tabular-nums;
     }
     .sys-stat-label { font-size: 10px; color: var(--text-dim); margin-top: 2px; font-family: var(--font-mono); text-transform: uppercase; letter-spacing: 0.06em; }
 
@@ -545,6 +551,7 @@
       if (m.type === 'new_response') onNewResponse(m.data);
       if (m.type === 'annotation_added') onAnnotationAdded(m.data);
       if (m.type === 'session_git_status') onSessionGitStatus(m.data);
+      if (m.type === 'session_stats_update') onSessionStatsUpdate(m.data);
     };
   }
 
@@ -610,6 +617,16 @@
     if (data.sessionId === activeSessionId) renderSessionHeader();
   }
 
+  function onSessionStatsUpdate(data) {
+    const m = sessions.get(data.sessionId);
+    if (!m) return;
+    m.totalTokensIn = data.totalTokensIn;
+    m.totalTokensOut = data.totalTokensOut;
+    m.turnCount = data.turnCount;
+    m.lastActivity = Date.now();
+    if (data.sessionId === activeSessionId) renderSessionHeader();
+  }
+
   // === Config ===
   async function loadConfig() {
     try {
@@ -638,8 +655,8 @@
     if (stats.totalSessions) {
       html += `<div class="sys-section"><div class="sys-section-title">stats</div>
         <div class="sys-stats-grid">
-          <div class="sys-stat-card"><div class="sys-stat">${formatNum(stats.totalSessions)}</div><div class="sys-stat-label">sessions</div></div>
-          <div class="sys-stat-card"><div class="sys-stat">${formatNum(stats.totalMessages)}</div><div class="sys-stat-label">messages</div></div>
+          <div class="sys-stat-card"><div class="sys-stat animated-num" id="sys-total-sessions" data-raw-value="${stats.totalSessions}">${formatNum(stats.totalSessions)}</div><div class="sys-stat-label">sessions</div></div>
+          <div class="sys-stat-card"><div class="sys-stat animated-num" id="sys-total-messages" data-raw-value="${stats.totalMessages}">${formatNum(stats.totalMessages)}</div><div class="sys-stat-label">messages</div></div>
         </div>
         ${stats.firstSessionDate ? `<div class="sys-item"><span class="name">first session</span><span class="val">${new Date(stats.firstSessionDate).toLocaleDateString()}</span></div>` : ''}
       </div>`;
@@ -717,19 +734,39 @@
   }
 
   // === Tabs ===
+  const prevBadgeCounts = new Map(); // Track previous badge values for animation
+
   function renderTabs() {
     const bar = $('tab-bar-tabs');
     bar.innerHTML = '';
+    const badgesToAnimate = [];
     [...sessions.values()].sort((a,b) => a.startedAt - b.startedAt).forEach(s => {
       const t = document.createElement('div');
       t.className = 'tab' + (s.sessionId === activeSessionId ? ' active' : '');
       const dot = s._ended ? 'tab-dot ended' : 'tab-dot';
       const label = sessionLabel(s);
       const rc = (responses.get(s.sessionId) || []).length;
-      const badge = rc > 0 && s.sessionId !== activeSessionId ? `<span class="tab-badge">${rc}</span>` : '';
+      const badgeId = 'tab-badge-' + s.sessionId.slice(0,8);
+      const badge = rc > 0 && s.sessionId !== activeSessionId
+        ? `<span class="tab-badge animated-num" id="${badgeId}" data-raw-value="${rc}">${rc}</span>` : '';
       t.innerHTML = `<span class="${dot}"></span>${esc(label)}${badge}`;
       t.onclick = () => switchSession(s.sessionId);
       bar.appendChild(t);
+
+      // Queue animation if badge is visible and value changed
+      if (rc > 0 && s.sessionId !== activeSessionId) {
+        const prev = prevBadgeCounts.get(s.sessionId) || 0;
+        if (prev !== rc && prev > 0) {
+          badgesToAnimate.push({ id: badgeId, oldVal: prev, newVal: rc });
+        }
+        prevBadgeCounts.set(s.sessionId, rc);
+      }
+    });
+
+    // Animate badge counts after DOM is built
+    badgesToAnimate.forEach(({ id, oldVal, newVal }) => {
+      const el = $(id);
+      if (el) animateValue(el, oldVal, newVal, 400, String);
     });
   }
 
@@ -741,45 +778,65 @@
 
   function switchSession(sid) {
     activeSessionId = sid;
+    headerSessionId = null; // Force full header rebuild on session switch
     renderTabs(); renderSessionHeader(); renderAllResponses(); renderAnnotations();
   }
 
   // === Session Header ===
+  // Track which session the header was last built for
+  let headerSessionId = null;
+
   function renderSessionHeader() {
     const h = $('session-header');
     const m = sessions.get(activeSessionId);
-    if (!m) { h.style.display = 'none'; return; }
+    if (!m) { h.style.display = 'none'; headerSessionId = null; return; }
     h.style.display = 'block';
-    const model = (m.model||'unknown').replace('claude-','').replace(/-\d+$/,'');
-    const started = new Date(m.startedAt).toLocaleTimeString();
-    h.innerHTML = `
-      <div class="sh-row1">
-        <span class="sh-cwd">${esc(m.cwd||'')}</span>
-        <span class="sh-pill model">${esc(model)}</span>
-        <span class="sh-pill perm">${esc(m.permissionMode||'default')}</span>
-        ${m.source && m.source !== 'startup' ? `<span class="sh-pill source">${esc(m.source)}</span>` : ''}
-      </div>
-      <div class="sh-grid">
-        ${mi('branch', m.gitBranch||'-')}${mi('repo', m.gitRepo||'-')}${mi('started', started)}
-        ${mi('turns', m.turnCount||0)}${mi('in', formatTokens(m.totalTokensIn||0))}${mi('out', formatTokens(m.totalTokensOut||0))}
-        ${m.claudeVersion ? mi('cc', m.claudeVersion) : ''}
-      </div>
-      ${renderGitStatus(m.gitStatus)}`;
+
+    // If switching sessions or first render, rebuild the full header
+    if (headerSessionId !== activeSessionId) {
+      headerSessionId = activeSessionId;
+      const model = (m.model||'unknown').replace('claude-','').replace(/-\d+$/,'');
+      const started = new Date(m.startedAt).toLocaleTimeString();
+      h.innerHTML = `
+        <div class="sh-row1">
+          <span class="sh-cwd">${esc(m.cwd||'')}</span>
+          <span class="sh-pill model">${esc(model)}</span>
+          <span class="sh-pill perm">${esc(m.permissionMode||'default')}</span>
+          ${m.source && m.source !== 'startup' ? `<span class="sh-pill source">${esc(m.source)}</span>` : ''}
+        </div>
+        <div class="sh-grid">
+          ${mi('branch', m.gitBranch||'-')}${mi('repo', m.gitRepo||'-')}${mi('started', started)}
+          ${miAnim('turns', m.turnCount||0, 'sh-turns', formatNum)}${miAnim('in', m.totalTokensIn||0, 'sh-tok-in', formatTokens)}${miAnim('out', m.totalTokensOut||0, 'sh-tok-out', formatTokens)}
+          ${m.claudeVersion ? mi('cc', m.claudeVersion) : ''}
+        </div>
+        ${renderGitStatus(m.gitStatus)}`;
+      return;
+    }
+
+    // Same session — animate the changing numeric values
+    updateAnimatedNum($('sh-turns'), m.turnCount || 0, formatNum);
+    updateAnimatedNum($('sh-tok-in'), m.totalTokensIn || 0, formatTokens);
+    updateAnimatedNum($('sh-tok-out'), m.totalTokensOut || 0, formatTokens);
+    // Re-render git status (it changes independently of numeric stats)
+    const gitContainer = h.querySelector('.sh-git');
+    const newGit = renderGitStatus(m.gitStatus);
+    if (newGit) {
+      if (gitContainer) gitContainer.outerHTML = newGit;
+      else h.insertAdjacentHTML('beforeend', newGit);
+    } else if (gitContainer) {
+      gitContainer.remove();
+    }
   }
 
   function renderGitStatus(gs) {
     if (!gs) return '';
     const parts = [];
 
-    // Status dot
     const dotClass = gs.conflicted > 0 ? 'conflict' :
                      (gs.staged + gs.modified + gs.untracked > 0) ? 'dirty' : 'clean';
     parts.push(`<span class="sh-git-dot ${dotClass}"></span>`);
-
-    // Branch name
     parts.push(`<span class="sh-git-branch">${esc(gs.branch || '(detached)')}</span>`);
 
-    // Ahead/behind
     const syncParts = [];
     if (gs.ahead > 0) syncParts.push(`<span class="ahead">&uarr;${gs.ahead}</span>`);
     if (gs.behind > 0) syncParts.push(`<span class="behind">&darr;${gs.behind}</span>`);
@@ -787,7 +844,6 @@
       parts.push(`<span class="sh-git-sync">${syncParts.join(' ')}</span>`);
     }
 
-    // File counts
     const fileParts = [];
     if (gs.staged > 0) fileParts.push(`<span class="gs gs-staged">+${gs.staged}</span>`);
     if (gs.modified > 0) fileParts.push(`<span class="gs gs-modified">~${gs.modified}</span>`);
@@ -803,6 +859,9 @@
   }
 
   function mi(l,v) { return `<span class="mi"><span class="ml">${l}</span><span class="mv">${esc(String(v))}</span></span>`; }
+  function miAnim(l, rawVal, id, formatter) {
+    return `<span class="mi"><span class="ml">${l}</span><span class="mv animated-num" id="${id}" data-raw-value="${rawVal}">${formatter(rawVal)}</span></span>`;
+  }
 
   // === Responses ===
   function renderAllResponses() {
@@ -902,6 +961,47 @@
       btn.textContent = 'copied'; btn.classList.add('copied');
       setTimeout(() => { btn.textContent = 'copy'; btn.classList.remove('copied'); }, 1500);
     });
+  }
+
+  // === Animated Numbers ===
+  // Ease-out cubic: decelerates into final value
+  function easeOutCubic(t) { return 1 - Math.pow(1 - t, 3); }
+
+  // Smoothly animate a numeric value between old and new
+  // el: DOM element with class="animated-num" and data-raw-value
+  // formatter: function(rawNumber) => display string (e.g. formatTokens)
+  function animateValue(el, oldVal, newVal, duration, formatter) {
+    if (oldVal === newVal) return;
+    // Cancel any in-flight animation on this element
+    if (el._animFrame) cancelAnimationFrame(el._animFrame);
+
+    const startTime = performance.now();
+    const delta = newVal - oldVal;
+
+    function tick(now) {
+      const elapsed = now - startTime;
+      const progress = Math.min(elapsed / duration, 1);
+      const eased = easeOutCubic(progress);
+      const current = Math.round(oldVal + delta * eased);
+      el.textContent = formatter(current);
+      if (progress < 1) {
+        el._animFrame = requestAnimationFrame(tick);
+      } else {
+        el.textContent = formatter(newVal);
+        el._animFrame = null;
+      }
+    }
+    el._animFrame = requestAnimationFrame(tick);
+  }
+
+  // Update an animated-num span: reads old data-raw-value, sets new, animates
+  function updateAnimatedNum(el, newRaw, formatter, duration) {
+    if (!el) return;
+    duration = duration || 500;
+    const oldRaw = parseInt(el.getAttribute('data-raw-value') || '0', 10) || 0;
+    el.setAttribute('data-raw-value', String(newRaw));
+    if (oldRaw === newRaw) return;
+    animateValue(el, oldRaw, newRaw, duration, formatter);
   }
 
   // === Utils ===
