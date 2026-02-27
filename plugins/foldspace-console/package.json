@@ -1,0 +1,12 @@
+{
+  "name": "foldspace-console",
+  "version": "1.0.0",
+  "description": "Rich browser viewer for Claude Code with annotation feedback loop",
+  "type": "module",
+  "scripts": {
+    "start": "bun run daemon/index.ts"
+  },
+  "devDependencies": {
+    "@types/bun": "latest"
+  }
+}

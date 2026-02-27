@@ -1,0 +1,29 @@
+{
+  "name": "the-no-shop",
+  "owner": {
+    "name": "Brian Morin",
+    "url": "https://github.com/bdmorin"
+  },
+  "metadata": {
+    "description": "Ixian technology for Claude Code. Tech that probably bends the rules.",
+    "version": "1.0.0",
+    "pluginRoot": "./plugins"
+  },
+  "plugins": [
+    {
+      "name": "foldspace-console",
+      "source": "./plugins/foldspace-console",
+      "description": "Rich browser viewer for Claude Code with annotation feedback loop. Your agent sessions rendered beautifully, annotated contextually, fed back seamlessly.",
+      "version": "1.0.0",
+      "author": {
+        "name": "Brian Morin"
+      },
+      "homepage": "https://github.com/bdmorin/the-no-shop",
+      "repository": "https://github.com/bdmorin/the-no-shop",
+      "license": "MIT",
+      "keywords": ["viewer", "browser", "annotations", "sidecar", "dashboard", "ixian"],
+      "category": "productivity",
+      "tags": ["output-viewer", "annotation", "multi-session", "dashboard"]
+    }
+  ]
+}

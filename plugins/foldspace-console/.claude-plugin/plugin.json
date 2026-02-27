@@ -1,0 +1,11 @@
+{
+  "name": "foldspace-console",
+  "description": "Rich browser viewer for Claude Code output with annotation feedback loop. Navigate your agent sessions through foldspace.",
+  "version": "1.0.0",
+  "author": {
+    "name": "Brian Morin"
+  },
+  "homepage": "https://github.com/bdmorin/the-no-shop",
+  "repository": "https://github.com/bdmorin/the-no-shop",
+  "license": "MIT"
+}
