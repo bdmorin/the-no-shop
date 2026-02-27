@@ -9,6 +9,7 @@
   <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github-dark.min.css">
   <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js"></script>
   <style>
     :root {
       /*
@@ -503,6 +504,179 @@
     ::-webkit-scrollbar-track { background: transparent; }
     ::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.04); border-radius: 2px; }
     ::-webkit-scrollbar-thumb:hover { background: rgba(255,255,255,0.07); }
+
+    /* === Sidecar Components === */
+    .sidecar {
+      background: var(--bg-inset); border: 1px solid var(--border);
+      border-radius: var(--r-lg); margin: 14px 0; position: relative;
+      overflow: hidden; box-shadow: 0 2px 12px rgba(0,0,0,0.15);
+    }
+    .sidecar-header {
+      display: flex; justify-content: space-between; align-items: center;
+      padding: 4px 12px; background: rgba(255,255,255,0.015);
+      border-bottom: 1px solid var(--border); font-size: 10px;
+    }
+    .sidecar-label {
+      color: var(--teal); font-family: var(--font-mono); font-weight: 600;
+      text-transform: lowercase; letter-spacing: 0.05em;
+    }
+    .sidecar-body { padding: 14px 16px; overflow-x: auto; }
+
+    /* sidecar-mermaid */
+    .sidecar-mermaid .sidecar-body {
+      display: flex; justify-content: center; align-items: center;
+      padding: 20px 16px; min-height: 80px;
+    }
+    .sidecar-mermaid .sidecar-body svg {
+      max-width: 100%; height: auto;
+    }
+
+    /* sidecar-table */
+    .sidecar-table .sc-table-filter {
+      padding: 8px 12px; border-bottom: 1px solid var(--border);
+    }
+    .sidecar-table .sc-table-filter input {
+      width: 100%; background: var(--bg); border: 1px solid var(--border);
+      border-radius: var(--r); color: var(--text); padding: 5px 10px;
+      font-size: 12px; font-family: var(--font-mono);
+      transition: border-color 0.15s var(--ease);
+    }
+    .sidecar-table .sc-table-filter input:focus {
+      outline: none; border-color: rgba(58,158,143,0.3);
+    }
+    .sidecar-table .sc-table-filter input::placeholder {
+      color: var(--text-dim);
+    }
+    .sidecar-table table {
+      border-collapse: collapse; width: 100%; font-size: 12px;
+      font-family: var(--font-mono);
+    }
+    .sidecar-table th {
+      background: var(--bg-elevated); font-weight: 600; color: var(--text-bright);
+      font-size: 10px; text-transform: uppercase; letter-spacing: 0.04em;
+      padding: 7px 11px; text-align: left; border: 1px solid var(--border);
+      cursor: pointer; user-select: none; white-space: nowrap;
+      transition: background 0.15s var(--ease);
+    }
+    .sidecar-table th:hover { background: var(--bg-hover); }
+    .sidecar-table th .sort-arrow {
+      display: inline-block; margin-left: 4px; color: var(--teal); opacity: 0;
+      transition: opacity 0.15s var(--ease);
+    }
+    .sidecar-table th.sorted .sort-arrow { opacity: 1; }
+    .sidecar-table td {
+      padding: 6px 11px; border: 1px solid var(--border); color: var(--text);
+      white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 300px;
+    }
+    .sidecar-table tr:hover td { background: var(--bg-hover); }
+    .sidecar-table .sc-table-info {
+      padding: 6px 12px; font-size: 10px; color: var(--text-dim);
+      font-family: var(--font-mono); border-top: 1px solid var(--border);
+    }
+
+    /* sidecar-diff */
+    .sidecar-diff .sidecar-body { padding: 0; }
+    .sidecar-diff .diff-line {
+      display: flex; font-family: var(--font-mono); font-size: 12.5px;
+      line-height: 1.7; border-bottom: 1px solid rgba(255,255,255,0.02);
+    }
+    .sidecar-diff .diff-line:last-child { border-bottom: none; }
+    .sidecar-diff .diff-gutter {
+      width: 42px; flex-shrink: 0; text-align: right; padding: 0 8px 0 0;
+      color: var(--text-dim); font-size: 11px; user-select: none;
+      border-right: 1px solid var(--border);
+    }
+    .sidecar-diff .diff-content {
+      flex: 1; padding: 0 12px; white-space: pre; overflow-x: auto;
+    }
+    .sidecar-diff .diff-add {
+      background: rgba(58,158,106,0.08);
+    }
+    .sidecar-diff .diff-add .diff-content { color: var(--green); }
+    .sidecar-diff .diff-add .diff-gutter { color: var(--green); opacity: 0.6; }
+    .sidecar-diff .diff-del {
+      background: rgba(158,58,58,0.08);
+    }
+    .sidecar-diff .diff-del .diff-content { color: var(--red); }
+    .sidecar-diff .diff-del .diff-gutter { color: var(--red); opacity: 0.6; }
+    .sidecar-diff .diff-hunk {
+      background: rgba(58,158,143,0.04);
+    }
+    .sidecar-diff .diff-hunk .diff-content {
+      color: var(--teal); font-style: italic; opacity: 0.7;
+    }
+    .sidecar-diff .diff-ctx .diff-content { color: var(--text-muted); }
+
+    /* sidecar-json */
+    .sidecar-json .sidecar-body {
+      font-family: var(--font-mono); font-size: 12.5px; line-height: 1.7;
+    }
+    .sidecar-json .jt-row { white-space: nowrap; }
+    .sidecar-json .jt-toggle {
+      display: inline-block; width: 14px; text-align: center;
+      cursor: pointer; color: var(--teal); user-select: none;
+      font-size: 10px; transition: transform 0.15s var(--ease);
+    }
+    .sidecar-json .jt-toggle.collapsed { transform: rotate(-90deg); }
+    .sidecar-json .jt-key { color: var(--text-bright); }
+    .sidecar-json .jt-str { color: var(--green); }
+    .sidecar-json .jt-num { color: var(--amber); }
+    .sidecar-json .jt-bool { color: var(--teal); }
+    .sidecar-json .jt-null { color: var(--text-dim); font-style: italic; }
+    .sidecar-json .jt-bracket { color: var(--text-muted); }
+    .sidecar-json .jt-children { padding-left: 18px; }
+    .sidecar-json .jt-children.hidden { display: none; }
+    .sidecar-json .jt-summary {
+      color: var(--text-dim); font-style: italic; font-size: 11px; display: none;
+    }
+    .sidecar-json .jt-toggle.collapsed ~ .jt-summary { display: inline; }
+
+    /* sidecar-progress */
+    .sidecar-progress .sidecar-body {
+      display: flex; align-items: center; gap: 14px; padding: 12px 16px;
+    }
+    .sidecar-progress .sp-status-dot {
+      width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0;
+    }
+    .sidecar-progress .sp-status-dot.running {
+      background: var(--teal); box-shadow: 0 0 6px rgba(58,158,143,0.4);
+      animation: sp-pulse 1.5s ease-in-out infinite;
+    }
+    .sidecar-progress .sp-status-dot.done {
+      background: var(--green);
+    }
+    .sidecar-progress .sp-status-dot.error {
+      background: var(--red);
+    }
+    .sidecar-progress .sp-status-dot.pending {
+      background: var(--text-dim);
+    }
+    @keyframes sp-pulse {
+      0%, 100% { opacity: 0.6; }
+      50% { opacity: 1; }
+    }
+    .sidecar-progress .sp-info { flex: 1; min-width: 0; }
+    .sidecar-progress .sp-label {
+      font-size: 13px; color: var(--text-bright); font-weight: 500;
+      margin-bottom: 4px; white-space: nowrap; overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    .sidecar-progress .sp-bar-track {
+      height: 4px; background: var(--bg-elevated); border-radius: 2px;
+      overflow: hidden;
+    }
+    .sidecar-progress .sp-bar-fill {
+      height: 100%; border-radius: 2px;
+      transition: width 0.3s var(--ease);
+    }
+    .sidecar-progress .sp-bar-fill.running { background: var(--teal); }
+    .sidecar-progress .sp-bar-fill.done { background: var(--green); }
+    .sidecar-progress .sp-bar-fill.error { background: var(--red); }
+    .sidecar-progress .sp-bar-fill.pending { background: var(--text-dim); }
+    .sidecar-progress .sp-percent {
+      font-size: 12px; font-family: var(--font-mono); font-weight: 600;
+      color: var(--text-muted); flex-shrink: 0; min-width: 36px; text-align: right;
+    }
   </style>
 </head>
 <body>
@@ -587,8 +761,242 @@
     breaks: true, gfm: true,
   });
 
+  // Initialize mermaid with dark theme matching Ixian palette
+  mermaid.initialize({
+    startOnLoad: false,
+    theme: 'dark',
+    themeVariables: {
+      darkMode: true,
+      background: '#04050a',
+      primaryColor: '#0f1219',
+      primaryTextColor: '#cdd3de',
+      primaryBorderColor: 'rgba(255,255,255,0.10)',
+      lineColor: '#3a9e8f',
+      secondaryColor: '#0a0c14',
+      tertiaryColor: '#0f1219',
+      fontFamily: "'IBM Plex Mono', 'SF Mono', monospace",
+      fontSize: '13px',
+    },
+  });
+  let mermaidIdCounter = 0;
+
+  // === Sidecar Component Renderers ===
+
+  function sidecarWrap(type, rawText, bodyHtml) {
+    const escaped = rawText.replace(/"/g, '&quot;').replace(/</g, '&lt;');
+    const label = type.replace('sidecar-', '');
+    return `<div class="sidecar sidecar-${esc(label)}"><div class="sidecar-header"><span class="sidecar-label">${esc(label)}</span><button class="copy-btn" onclick="copyCode(this)" data-code="${escaped}">copy</button></div>${bodyHtml}</div>`;
+  }
+
+  function renderSidecarMermaid(text) {
+    const id = 'mermaid-' + (++mermaidIdCounter);
+    // Render async after DOM insertion; placeholder gets replaced via MutationObserver
+    setTimeout(() => {
+      const el = document.getElementById(id);
+      if (!el) return;
+      mermaid.render(id + '-svg', text).then(({ svg }) => {
+        el.innerHTML = svg;
+      }).catch(() => {
+        el.innerHTML = '<span style="color:var(--red);font-size:12px;font-family:var(--font-mono)">mermaid render error</span>';
+      });
+    }, 0);
+    return sidecarWrap('sidecar-mermaid', text,
+      `<div class="sidecar-body" id="${id}"><span style="color:var(--text-dim);font-size:12px;font-family:var(--font-mono)">rendering diagram...</span></div>`
+    );
+  }
+
+  function renderSidecarTable(text) {
+    let data;
+    try { data = JSON.parse(text); } catch {
+      return sidecarWrap('sidecar-table', text,
+        '<div class="sidecar-body"><span style="color:var(--red);font-size:12px;font-family:var(--font-mono)">invalid json</span></div>');
+    }
+    if (!Array.isArray(data) || data.length === 0) {
+      return sidecarWrap('sidecar-table', text,
+        '<div class="sidecar-body"><span style="color:var(--text-dim);font-size:12px;font-family:var(--font-mono)">empty dataset</span></div>');
+    }
+
+    const tableId = 'sctable-' + (++mermaidIdCounter);
+    const cols = Object.keys(data[0]);
+    let thead = '<tr>' + cols.map(c =>
+      `<th data-col="${esc(c)}" onclick="sortSidecarTable(this)">${esc(c)}<span class="sort-arrow">&#9650;</span></th>`
+    ).join('') + '</tr>';
+    let tbody = data.map(row =>
+      '<tr>' + cols.map(c => `<td title="${esc(String(row[c] ?? ''))}">${esc(String(row[c] ?? ''))}</td>`).join('') + '</tr>'
+    ).join('');
+
+    const body = `<div class="sc-table-filter"><input type="text" placeholder="filter..." oninput="filterSidecarTable(this, '${tableId}')"></div>`
+      + `<div class="sidecar-body" style="padding:0;overflow-x:auto"><table id="${tableId}"><thead>${thead}</thead><tbody>${tbody}</tbody></table></div>`
+      + `<div class="sc-table-info">${data.length} row${data.length !== 1 ? 's' : ''} &middot; ${cols.length} col${cols.length !== 1 ? 's' : ''}</div>`;
+
+    return sidecarWrap('sidecar-table', text, body);
+  }
+
+  function renderSidecarDiff(text) {
+    const lines = text.split('\n');
+    let lineNum = 0;
+    const rendered = lines.map(line => {
+      let cls = 'diff-ctx';
+      let gutter = '';
+      if (line.startsWith('@@')) {
+        cls = 'diff-hunk';
+        const match = line.match(/@@ -\d+(?:,\d+)? \+(\d+)/);
+        if (match) lineNum = parseInt(match[1], 10) - 1;
+        gutter = '...';
+      } else if (line.startsWith('+')) {
+        cls = 'diff-add';
+        lineNum++;
+        gutter = lineNum;
+      } else if (line.startsWith('-')) {
+        cls = 'diff-del';
+        gutter = '';
+      } else if (line.startsWith('diff ') || line.startsWith('index ') || line.startsWith('---') || line.startsWith('+++')) {
+        cls = 'diff-hunk';
+        gutter = '';
+      } else {
+        lineNum++;
+        gutter = lineNum;
+      }
+      return `<div class="diff-line ${cls}"><span class="diff-gutter">${gutter}</span><span class="diff-content">${esc(line)}</span></div>`;
+    }).join('');
+
+    return sidecarWrap('sidecar-diff', text,
+      `<div class="sidecar-body">${rendered}</div>`);
+  }
+
+  function renderSidecarJson(text) {
+    let data;
+    try { data = JSON.parse(text); } catch {
+      return sidecarWrap('sidecar-json', text,
+        '<div class="sidecar-body"><span style="color:var(--red);font-size:12px;font-family:var(--font-mono)">invalid json</span></div>');
+    }
+
+    function renderNode(value, key, indent) {
+      if (value === null) {
+        const keyPart = key !== undefined ? `<span class="jt-key">"${esc(String(key))}"</span>: ` : '';
+        return `<div class="jt-row">${keyPart}<span class="jt-null">null</span></div>`;
+      }
+      if (typeof value === 'string') {
+        const keyPart = key !== undefined ? `<span class="jt-key">"${esc(String(key))}"</span>: ` : '';
+        return `<div class="jt-row">${keyPart}<span class="jt-str">"${esc(value)}"</span></div>`;
+      }
+      if (typeof value === 'number') {
+        const keyPart = key !== undefined ? `<span class="jt-key">"${esc(String(key))}"</span>: ` : '';
+        return `<div class="jt-row">${keyPart}<span class="jt-num">${value}</span></div>`;
+      }
+      if (typeof value === 'boolean') {
+        const keyPart = key !== undefined ? `<span class="jt-key">"${esc(String(key))}"</span>: ` : '';
+        return `<div class="jt-row">${keyPart}<span class="jt-bool">${value}</span></div>`;
+      }
+      if (Array.isArray(value)) {
+        const keyPart = key !== undefined ? `<span class="jt-key">"${esc(String(key))}"</span>: ` : '';
+        if (value.length === 0) return `<div class="jt-row">${keyPart}<span class="jt-bracket">[]</span></div>`;
+        const summary = `<span class="jt-summary">[${value.length} items]</span>`;
+        const children = value.map((v, i) => renderNode(v, undefined, indent + 1)).join('');
+        return `<div class="jt-row">${keyPart}<span class="jt-toggle" onclick="toggleJsonNode(this)">&#9660;</span><span class="jt-bracket">[</span>${summary}<div class="jt-children">${children}</div><div class="jt-row"><span class="jt-bracket">]</span></div></div>`;
+      }
+      if (typeof value === 'object') {
+        const keyPart = key !== undefined ? `<span class="jt-key">"${esc(String(key))}"</span>: ` : '';
+        const keys = Object.keys(value);
+        if (keys.length === 0) return `<div class="jt-row">${keyPart}<span class="jt-bracket">{}</span></div>`;
+        const summary = `<span class="jt-summary">{${keys.length} keys}</span>`;
+        const children = keys.map(k => renderNode(value[k], k, indent + 1)).join('');
+        return `<div class="jt-row">${keyPart}<span class="jt-toggle" onclick="toggleJsonNode(this)">&#9660;</span><span class="jt-bracket">{</span>${summary}<div class="jt-children">${children}</div><div class="jt-row"><span class="jt-bracket">}</span></div></div>`;
+      }
+      return '';
+    }
+
+    const tree = renderNode(data, undefined, 0);
+    return sidecarWrap('sidecar-json', text,
+      `<div class="sidecar-body">${tree}</div>`);
+  }
+
+  function renderSidecarProgress(text) {
+    let data;
+    try { data = JSON.parse(text); } catch {
+      return sidecarWrap('sidecar-progress', text,
+        '<div class="sidecar-body"><span style="color:var(--red);font-size:12px;font-family:var(--font-mono)">invalid json</span></div>');
+    }
+    const label = data.label || 'Progress';
+    const percent = Math.max(0, Math.min(100, Number(data.percent) || 0));
+    const status = data.status || 'running';
+    const statusClass = ['running','done','error','pending'].includes(status) ? status : 'running';
+
+    return sidecarWrap('sidecar-progress', text,
+      `<div class="sidecar-body"><span class="sp-status-dot ${statusClass}"></span><div class="sp-info"><div class="sp-label">${esc(label)}</div><div class="sp-bar-track"><div class="sp-bar-fill ${statusClass}" style="width:${percent}%"></div></div></div><span class="sp-percent">${percent}%</span></div>`
+    );
+  }
+
+  // Sidecar component dispatch map
+  const sidecarRenderers = {
+    'sidecar-mermaid': renderSidecarMermaid,
+    'sidecar-table': renderSidecarTable,
+    'sidecar-diff': renderSidecarDiff,
+    'sidecar-json': renderSidecarJson,
+    'sidecar-progress': renderSidecarProgress,
+  };
+
+  // Global interaction handlers for sidecar components
+  function toggleJsonNode(el) {
+    el.classList.toggle('collapsed');
+    const children = el.parentElement.querySelector('.jt-children');
+    if (children) children.classList.toggle('hidden');
+  }
+
+  function sortSidecarTable(th) {
+    const table = th.closest('table');
+    const colIdx = Array.from(th.parentElement.children).indexOf(th);
+    const tbody = table.querySelector('tbody');
+    const rows = Array.from(tbody.querySelectorAll('tr'));
+    const isAsc = th.classList.contains('sorted') && th.dataset.dir === 'asc';
+    const dir = isAsc ? 'desc' : 'asc';
+
+    // Clear all sorted states
+    th.parentElement.querySelectorAll('th').forEach(h => {
+      h.classList.remove('sorted'); h.dataset.dir = '';
+      h.querySelector('.sort-arrow').innerHTML = '&#9650;';
+    });
+    th.classList.add('sorted');
+    th.dataset.dir = dir;
+    th.querySelector('.sort-arrow').innerHTML = dir === 'asc' ? '&#9650;' : '&#9660;';
+
+    rows.sort((a, b) => {
+      const av = a.children[colIdx]?.textContent || '';
+      const bv = b.children[colIdx]?.textContent || '';
+      const an = parseFloat(av), bn = parseFloat(bv);
+      if (!isNaN(an) && !isNaN(bn)) return dir === 'asc' ? an - bn : bn - an;
+      return dir === 'asc' ? av.localeCompare(bv) : bv.localeCompare(av);
+    });
+    rows.forEach(r => tbody.appendChild(r));
+  }
+
+  function filterSidecarTable(input, tableId) {
+    const filter = input.value.toLowerCase();
+    const table = document.getElementById(tableId);
+    if (!table) return;
+    const rows = table.querySelectorAll('tbody tr');
+    let visible = 0;
+    rows.forEach(row => {
+      const text = row.textContent.toLowerCase();
+      const show = text.includes(filter);
+      row.style.display = show ? '' : 'none';
+      if (show) visible++;
+    });
+    const info = table.closest('.sidecar')?.querySelector('.sc-table-info');
+    if (info) {
+      const total = rows.length;
+      info.textContent = filter ? `${visible} of ${total} rows` : `${total} row${total !== 1 ? 's' : ''}`;
+    }
+  }
+
   const renderer = new marked.Renderer();
   renderer.code = function({ text, lang }) {
+    // Check for sidecar component
+    if (lang && sidecarRenderers[lang]) {
+      return sidecarRenderers[lang](text);
+    }
+
+    // Default code block rendering
     const langLabel = lang || '';
     const highlighted = lang && hljs.getLanguage(lang)
       ? hljs.highlight(text, { language: lang }).value
