@@ -86,6 +86,28 @@ const gitPollingIntervals = new Map<string, Timer>();
 let miseCache: { data: any; ts: number } | null = null;
 const MISE_CACHE_TTL = 30_000;
 
+// --- Context docs types and cache ---
+
+interface ContextFile {
+  path: string;
+  shortPath: string;
+  readCount: number;
+  firstRead: string;
+  lastRead: string;
+  tool: string;  // "Read" | "Glob" | "Grep" | "Bash" | "Edit" | "Write"
+}
+
+interface ContextDocsResult {
+  files: ContextFile[];
+  totalReads: number;
+  uniqueFiles: number;
+}
+
+// Cache per session: { result, ts, fileSize }
+// Active sessions: 10s TTL. Ended sessions: cached indefinitely.
+const contextDocsCache = new Map<string, { result: ContextDocsResult; ts: number; fileSize: number }>();
+const CONTEXT_DOCS_TTL = 10_000;
+
 // Secret masking: any env key matching these patterns gets masked
 const SECRET_KEY_PATTERN = /KEY|SECRET|TOKEN|PASSWORD|CREDENTIAL|API/i;
 
@@ -662,6 +684,154 @@ async function scanTranscript(transcriptPath: string): Promise<{
   return { totalTokensIn, totalTokensOut, turnCount, model, claudeVersion, gitBranch };
 }
 
+// Resolve transcript path for a session.
+// Prefers the stored transcriptPath; falls back to slug-based derivation.
+function resolveTranscriptPath(meta: SessionMeta): string | null {
+  if (meta.transcriptPath) return meta.transcriptPath;
+
+  // Derive slug from cwd: /Users/foo/bar -> -Users-foo-bar
+  if (!meta.cwd) return null;
+  const slug = meta.cwd.replace(/\//g, "-");
+  return `${process.env.HOME}/.claude/projects/${slug}/${meta.sessionId}.jsonl`;
+}
+
+// Parse a transcript JSONL file to extract all file-accessing tool calls.
+// Extracts: Read (file_path), Glob (pattern results), Grep (path), Edit (file_path), Write (file_path)
+async function parseContextDocs(transcriptPath: string, cwd: string): Promise<ContextDocsResult> {
+  const fileMap = new Map<string, { readCount: number; firstRead: string; lastRead: string; tool: string }>();
+
+  function trackFile(filePath: string, tool: string, timestamp: string) {
+    // Normalize path: resolve and deduplicate
+    const normalized = filePath.trim();
+    if (!normalized || normalized === "-" || normalized.length < 2) return;
+
+    const existing = fileMap.get(normalized);
+    if (existing) {
+      existing.readCount++;
+      if (timestamp < existing.firstRead) existing.firstRead = timestamp;
+      if (timestamp > existing.lastRead) existing.lastRead = timestamp;
+      // Prefer Read over other tools for the display label
+      if (tool === "Read" && existing.tool !== "Read") existing.tool = tool;
+    } else {
+      fileMap.set(normalized, { readCount: 1, firstRead: timestamp, lastRead: timestamp, tool });
+    }
+  }
+
+  function makeShortPath(fullPath: string): string {
+    if (cwd && fullPath.startsWith(cwd + "/")) {
+      return fullPath.slice(cwd.length + 1);
+    }
+    // Fall back: strip home directory
+    const home = process.env.HOME || "";
+    if (home && fullPath.startsWith(home + "/")) {
+      return "~/" + fullPath.slice(home.length + 1);
+    }
+    return fullPath;
+  }
+
+  try {
+    const text = await Bun.file(transcriptPath).text();
+    for (const line of text.split("\n")) {
+      if (!line.trim()) continue;
+      try {
+        const record = JSON.parse(line);
+        const timestamp = record.timestamp || new Date().toISOString();
+
+        // Extract tool_use blocks from assistant messages
+        if (record.type === "assistant" && record.message?.content) {
+          const content = record.message.content;
+          if (Array.isArray(content)) {
+            for (const block of content) {
+              if (block.type !== "tool_use") continue;
+              const input = block.input || {};
+
+              switch (block.name) {
+                case "Read":
+                  if (input.file_path) trackFile(input.file_path, "Read", timestamp);
+                  break;
+                case "Glob":
+                  // Glob input has "pattern" but files come in the result; we'll get those from tool_result
+                  // Track the base path if provided
+                  if (input.path) trackFile(input.path, "Glob", timestamp);
+                  break;
+                case "Grep":
+                  if (input.path) trackFile(input.path, "Grep", timestamp);
+                  break;
+                case "Edit":
+                  if (input.file_path) trackFile(input.file_path, "Edit", timestamp);
+                  break;
+                case "Write":
+                  if (input.file_path) trackFile(input.file_path, "Write", timestamp);
+                  break;
+              }
+            }
+          }
+        }
+
+        // Extract file paths from tool_result blocks in user messages
+        // Glob results are newline-separated file paths in the result text
+        if (record.type === "user" && record.message?.content) {
+          const content = record.message.content;
+          if (Array.isArray(content)) {
+            for (const block of content) {
+              if (block.type !== "tool_result") continue;
+              // We need to know which tool this result is for.
+              // The tool_result has tool_use_id but we'd need to correlate.
+              // Instead, parse the result text heuristically:
+              // Glob results are file paths (one per line, starting with /)
+              const resultText = typeof block.content === "string"
+                ? block.content
+                : Array.isArray(block.content)
+                  ? block.content.filter((b: any) => b.type === "text").map((b: any) => b.text).join("\n")
+                  : "";
+
+              if (!resultText) continue;
+
+              // Check if this looks like Glob output (lines of absolute paths)
+              const lines = resultText.split("\n");
+              const pathLines = lines.filter((l: string) => l.startsWith("/") && !l.includes(" ") && l.length < 500);
+              // If most lines are paths, treat as file list
+              if (pathLines.length > 0 && pathLines.length >= lines.filter((l: string) => l.trim()).length * 0.5) {
+                for (const p of pathLines) {
+                  trackFile(p.trim(), "Glob", timestamp);
+                }
+              }
+
+              // Check Grep results: lines matching "filepath:linenum:content" or just file paths
+              // Grep in files_with_matches mode returns plain file paths
+              const grepFileLines = lines.filter((l: string) => l.startsWith("/") && l.includes(":") && l.length < 500);
+              for (const grepLine of grepFileLines) {
+                const filePart = grepLine.split(":")[0];
+                if (filePart && filePart.startsWith("/")) {
+                  trackFile(filePart.trim(), "Grep", timestamp);
+                }
+              }
+            }
+          }
+        }
+      } catch {
+        // Skip malformed lines
+      }
+    }
+  } catch {
+    // File not found or unreadable
+  }
+
+  // Build result sorted by most recent read first
+  const files: ContextFile[] = Array.from(fileMap.entries()).map(([path, data]) => ({
+    path,
+    shortPath: makeShortPath(path),
+    readCount: data.readCount,
+    firstRead: data.firstRead,
+    lastRead: data.lastRead,
+    tool: data.tool,
+  })).sort((a, b) => b.lastRead.localeCompare(a.lastRead));
+
+  const totalReads = files.reduce((sum, f) => sum + f.readCount, 0);
+
+  return { files, totalReads, uniqueFiles: files.length };
+}
+
 const server = Bun.serve({
   port: PORT,
 
@@ -861,6 +1031,53 @@ const server = Bun.serve({
     if (url.pathname === "/api/mise" && req.method === "GET") {
       const data = await fetchMiseData();
       return Response.json(data, { headers: corsHeaders });
+    }
+
+    // --- Context documents (files read into model context) ---
+    if (url.pathname === "/api/context-docs" && req.method === "GET") {
+      const sid = url.searchParams.get("session");
+      if (!sid) {
+        return Response.json({ error: "missing session param" }, { status: 400, headers: corsHeaders });
+      }
+
+      const meta = sessions.get(sid);
+      if (!meta) {
+        return Response.json({ files: [], totalReads: 0, uniqueFiles: 0 }, { headers: corsHeaders });
+      }
+
+      const transcriptPath = resolveTranscriptPath(meta);
+      if (!transcriptPath) {
+        return Response.json({ files: [], totalReads: 0, uniqueFiles: 0 }, { headers: corsHeaders });
+      }
+
+      // Check cache
+      const cached = contextDocsCache.get(sid);
+
+      if (cached) {
+        const age = Date.now() - cached.ts;
+        if (age < CONTEXT_DOCS_TTL) {
+          // Within TTL: serve cache unless file grew (transcript still being written)
+          try {
+            const currentSize = Bun.file(transcriptPath).size;
+            if (currentSize === cached.fileSize) {
+              return Response.json(cached.result, { headers: corsHeaders });
+            }
+          } catch {
+            // File inaccessible; serve stale cache
+            return Response.json(cached.result, { headers: corsHeaders });
+          }
+        }
+      }
+
+      // Parse transcript
+      const result = await parseContextDocs(transcriptPath, meta.cwd || "");
+
+      // Cache result with file size
+      let fileSize = 0;
+      try { fileSize = Bun.file(transcriptPath).size; } catch {}
+      contextDocsCache.set(sid, { result, ts: Date.now(), fileSize });
+
+      return Response.json(result, { headers: corsHeaders });
     }
 
     // --- Health ---
