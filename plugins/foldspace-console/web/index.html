@@ -559,6 +559,49 @@
       border-radius: var(--r); padding: 10px; text-align: center;
     }
 
+    /* Resource monitor bars */
+    .res-section { margin-bottom: 14px; }
+    .res-row {
+      display: flex; align-items: center; gap: 8px;
+      padding: 4px 0;
+    }
+    .res-label {
+      font-size: 10px; font-family: var(--font-mono); color: var(--text-dim);
+      text-transform: uppercase; letter-spacing: 0.06em;
+      width: 36px; flex-shrink: 0;
+    }
+    .res-bar-track {
+      flex: 1; height: 4px; background: var(--bg-inset);
+      border-radius: 2px; overflow: hidden;
+    }
+    .res-bar-fill {
+      height: 100%; background: var(--teal);
+      border-radius: 2px;
+      transition: width 600ms cubic-bezier(0.25, 0.1, 0.25, 1);
+      min-width: 0;
+    }
+    .res-val {
+      font-size: 11px; font-family: var(--font-mono); color: var(--text-muted);
+      font-variant-numeric: tabular-nums;
+      min-width: 52px; text-align: right; flex-shrink: 0;
+    }
+    .res-sub {
+      font-size: 10px; font-family: var(--font-mono); color: var(--text-dim);
+      padding: 1px 0 2px 44px;
+      font-variant-numeric: tabular-nums;
+    }
+    .res-detail-grid {
+      display: grid; grid-template-columns: 1fr 1fr; gap: 0 12px;
+      padding: 2px 0 0 0;
+    }
+    .res-detail {
+      font-size: 10px; font-family: var(--font-mono); color: var(--text-dim);
+      padding: 2px 0; display: flex; justify-content: space-between;
+      font-variant-numeric: tabular-nums;
+    }
+    .res-detail .rdl { color: var(--text-dim); }
+    .res-detail .rdv { color: var(--text-muted); }
+
     /* === Annotation Popup === */
     #annotation-popup {
       display: none; position: fixed; background: var(--bg-elevated);
@@ -1174,6 +1217,7 @@
   let globalConfig = null;
   let miseData = null;
   let miseLoaded = false;
+  let systemStats = null;
 
   // View mode: 'session' (default) or 'stream'
   let viewMode = localStorage.getItem('foldspace-view-mode') || 'session';
@@ -1630,6 +1674,7 @@
       if (m.type === 'annotation_added') onAnnotationAdded(m.data);
       if (m.type === 'session_git_status') onSessionGitStatus(m.data);
       if (m.type === 'session_stats_update') onSessionStatsUpdate(m.data);
+      if (m.type === 'system_stats') onSystemStats(m.data);
     };
   }
 
@@ -1721,6 +1766,11 @@
     if (data.sessionId === activeSessionId) renderSessionHeader();
   }
 
+  function onSystemStats(data) {
+    systemStats = data;
+    updateResourceDisplay();
+  }
+
   // === Config ===
   async function loadConfig() {
     try {
@@ -1766,6 +1816,9 @@
     const env = Object.entries(g.settings?.env || {});
 
     let html = '';
+
+    // Resources section (live CPU/memory/uptime)
+    html += renderResourceSection();
 
     // Stats section (unchanged — not interactive)
     if (stats.totalSessions) {
@@ -2428,6 +2481,101 @@
     el.setAttribute('data-raw-value', String(newRaw));
     if (oldRaw === newRaw) return;
     animateValue(el, oldRaw, newRaw, duration, formatter);
+  }
+
+  // === Resource Monitor ===
+  function formatBytes(bytes) {
+    if (bytes >= 1e12) return (bytes / 1e12).toFixed(1) + ' TB';
+    if (bytes >= 1e9) return (bytes / 1e9).toFixed(1) + ' GB';
+    if (bytes >= 1e6) return (bytes / 1e6).toFixed(1) + ' MB';
+    if (bytes >= 1e3) return (bytes / 1e3).toFixed(1) + ' KB';
+    return bytes + ' B';
+  }
+
+  function formatUptime(seconds) {
+    if (seconds < 60) return seconds + 's';
+    if (seconds < 3600) return Math.floor(seconds / 60) + 'm ' + (seconds % 60) + 's';
+    const h = Math.floor(seconds / 3600);
+    const m = Math.floor((seconds % 3600) / 60);
+    if (h >= 24) {
+      const d = Math.floor(h / 24);
+      const rh = h % 24;
+      return d + 'd ' + rh + 'h';
+    }
+    return h + 'h ' + m + 'm';
+  }
+
+  function formatPercent(n) { return n.toFixed(1) + '%'; }
+
+  function renderResourceSection() {
+    if (!systemStats) return '';
+    const s = systemStats;
+    const cpuPct = s.cpu.overall;
+    const memPct = s.memory.total > 0 ? (s.memory.used / s.memory.total * 100) : 0;
+
+    return `<div class="sys-section" id="res-section"><div class="sys-section-title">resources</div>
+      <div class="res-section">
+        <div class="res-row">
+          <span class="res-label">cpu</span>
+          <div class="res-bar-track"><div class="res-bar-fill" id="res-cpu-bar" style="width:${cpuPct}%"></div></div>
+          <span class="res-val animated-num" id="res-cpu-val" data-raw-value="${Math.round(cpuPct * 10)}">${formatPercent(cpuPct)}</span>
+        </div>
+        <div class="res-sub" id="res-load">load ${s.loadAvg.map(l => l.toFixed(2)).join('  ')}</div>
+        <div class="res-row" style="margin-top:6px">
+          <span class="res-label">mem</span>
+          <div class="res-bar-track"><div class="res-bar-fill" id="res-mem-bar" style="width:${memPct.toFixed(1)}%"></div></div>
+          <span class="res-val" id="res-mem-val">${formatBytes(s.memory.used)} / ${formatBytes(s.memory.total)}</span>
+        </div>
+        <div class="res-detail-grid">
+          <div class="res-detail"><span class="rdl">rss</span><span class="rdv" id="res-rss">${formatBytes(s.memory.rss)}</span></div>
+          <div class="res-detail"><span class="rdl">heap</span><span class="rdv" id="res-heap">${formatBytes(s.memory.heapUsed)} / ${formatBytes(s.memory.heapTotal)}</span></div>
+          <div class="res-detail"><span class="rdl">uptime</span><span class="rdv" id="res-uptime">${formatUptime(s.uptime)}</span></div>
+          <div class="res-detail"><span class="rdl">cores</span><span class="rdv">${s.cpu.count}</span></div>
+        </div>
+      </div>
+    </div>`;
+  }
+
+  // Live-update resource display elements without re-rendering the entire System panel
+  function updateResourceDisplay() {
+    if (!systemStats) return;
+    const s = systemStats;
+    const cpuPct = s.cpu.overall;
+    const memPct = s.memory.total > 0 ? (s.memory.used / s.memory.total * 100) : 0;
+
+    const cpuBar = $('res-cpu-bar');
+    if (!cpuBar) {
+      // Resource section not rendered yet — re-render system panel if it's visible
+      const panel = $('system-panel');
+      if (panel && panel.classList.contains('active')) renderSystem();
+      return;
+    }
+
+    cpuBar.style.width = cpuPct + '%';
+    const cpuVal = $('res-cpu-val');
+    if (cpuVal) {
+      const oldRaw = parseInt(cpuVal.getAttribute('data-raw-value') || '0', 10);
+      const newRaw = Math.round(cpuPct * 10);
+      cpuVal.setAttribute('data-raw-value', String(newRaw));
+      if (oldRaw !== newRaw) {
+        animateValue(cpuVal, oldRaw / 10, cpuPct, 500, formatPercent);
+      }
+    }
+
+    const memBar = $('res-mem-bar');
+    if (memBar) memBar.style.width = memPct.toFixed(1) + '%';
+    const memVal = $('res-mem-val');
+    if (memVal) memVal.textContent = formatBytes(s.memory.used) + ' / ' + formatBytes(s.memory.total);
+
+    const loadEl = $('res-load');
+    if (loadEl) loadEl.textContent = 'load ' + s.loadAvg.map(l => l.toFixed(2)).join('  ');
+
+    const rssEl = $('res-rss');
+    if (rssEl) rssEl.textContent = formatBytes(s.memory.rss);
+    const heapEl = $('res-heap');
+    if (heapEl) heapEl.textContent = formatBytes(s.memory.heapUsed) + ' / ' + formatBytes(s.memory.heapTotal);
+    const uptimeEl = $('res-uptime');
+    if (uptimeEl) uptimeEl.textContent = formatUptime(s.uptime);
   }
 
   // === Utils ===

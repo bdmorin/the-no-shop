@@ -13,8 +13,10 @@
  */
 
 import { $ } from "bun";
+import * as os from "os";
 
 const PORT = Number(process.env.FOLDSPACE_PORT) || 3377;
+const DAEMON_START_TIME = Date.now();
 
 // --- Types ---
 
@@ -80,6 +82,87 @@ const gitStatusCache = new Map<string, GitStatus>();
 const cwdToRepoRoot = new Map<string, string | null>();
 // Active polling intervals keyed by repo root
 const gitPollingIntervals = new Map<string, Timer>();
+
+// --- CPU snapshot for delta calculation ---
+// os.cpus() returns instantaneous tick counts; we need two snapshots to compute usage %
+let prevCpuSnapshot: os.CpuInfo[] | null = null;
+
+interface SystemStats {
+  cpu: {
+    count: number;
+    model: string;
+    usage: number[];      // per-core percentages (0-100)
+    overall: number;      // average across all cores
+  };
+  memory: {
+    total: number;
+    used: number;
+    free: number;
+    heapUsed: number;
+    heapTotal: number;
+    rss: number;
+  };
+  uptime: number;
+  platform: string;
+  arch: string;
+  nodeVersion: string;
+  loadAvg: number[];
+}
+
+function computeSystemStats(): SystemStats {
+  const cpus = os.cpus();
+  const usage: number[] = [];
+
+  if (prevCpuSnapshot && prevCpuSnapshot.length === cpus.length) {
+    for (let i = 0; i < cpus.length; i++) {
+      const prev = prevCpuSnapshot[i].times;
+      const curr = cpus[i].times;
+      const prevTotal = prev.user + prev.nice + prev.sys + prev.idle + prev.irq;
+      const currTotal = curr.user + curr.nice + curr.sys + curr.idle + curr.irq;
+      const totalDelta = currTotal - prevTotal;
+      const idleDelta = curr.idle - prev.idle;
+      if (totalDelta > 0) {
+        usage.push(Math.round((1 - idleDelta / totalDelta) * 10000) / 100);
+      } else {
+        usage.push(0);
+      }
+    }
+  } else {
+    // First call — no delta available, report 0
+    for (let i = 0; i < cpus.length; i++) usage.push(0);
+  }
+  prevCpuSnapshot = cpus;
+
+  const overall = usage.length > 0
+    ? Math.round(usage.reduce((a, b) => a + b, 0) / usage.length * 100) / 100
+    : 0;
+
+  const totalMem = os.totalmem();
+  const freeMem = os.freemem();
+  const memUsage = process.memoryUsage();
+
+  return {
+    cpu: {
+      count: cpus.length,
+      model: cpus[0]?.model || "unknown",
+      usage,
+      overall,
+    },
+    memory: {
+      total: totalMem,
+      used: totalMem - freeMem,
+      free: freeMem,
+      heapUsed: memUsage.heapUsed,
+      heapTotal: memUsage.heapTotal,
+      rss: memUsage.rss,
+    },
+    uptime: Math.floor((Date.now() - DAEMON_START_TIME) / 1000),
+    platform: process.platform,
+    arch: process.arch,
+    nodeVersion: process.version,
+    loadAvg: os.loadavg(),
+  };
+}
 
 // --- Mise cache ---
 // 30-second TTL: mise config rarely changes mid-session
@@ -863,6 +946,12 @@ const server = Bun.serve({
       return Response.json(data, { headers: corsHeaders });
     }
 
+    // --- System stats (CPU, memory, uptime) ---
+    if (url.pathname === "/api/stats/system" && req.method === "GET") {
+      const stats = computeSystemStats();
+      return Response.json(stats, { headers: corsHeaders });
+    }
+
     // --- Health ---
     if (url.pathname === "/api/health") {
       return Response.json({
@@ -949,8 +1038,15 @@ const server = Bun.serve({
 
 const HEARTBEAT_INTERVAL = 8000;
 
+// Take an initial CPU snapshot so the first heartbeat has a valid delta
+prevCpuSnapshot = os.cpus();
+
 setInterval(async () => {
   if (wsClients.size === 0) return; // No browsers connected, skip work
+
+  // Broadcast system resource stats on every heartbeat
+  const systemStats = computeSystemStats();
+  broadcast({ type: "system_stats", data: systemStats });
 
   for (const [sid, meta] of sessions) {
     if (!meta.transcriptPath) continue;
