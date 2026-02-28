@@ -362,15 +362,92 @@ function maybeStopGitPolling(repoRoot: string): void {
   gitStatusCache.delete(repoRoot);
 }
 
-// Read global Claude Code config
+// Parse YAML-ish frontmatter from a skill markdown file
+// Handles simple key: value pairs between --- delimiters
+function parseFrontmatter(content: string): Record<string, string> {
+  const fm: Record<string, string> = {};
+  if (!content.startsWith("---")) return fm;
+  const endIdx = content.indexOf("---", 3);
+  if (endIdx === -1) return fm;
+  const block = content.slice(3, endIdx).trim();
+  for (const line of block.split("\n")) {
+    const colonIdx = line.indexOf(":");
+    if (colonIdx === -1) continue;
+    const key = line.slice(0, colonIdx).trim();
+    let val = line.slice(colonIdx + 1).trim();
+    // Strip surrounding quotes
+    if ((val.startsWith('"') && val.endsWith('"')) || (val.startsWith("'") && val.endsWith("'"))) {
+      val = val.slice(1, -1);
+    }
+    fm[key] = val;
+  }
+  return fm;
+}
+
+// Scan a skills directory for SKILL.md files (plugin skills live in subdirs)
+async function scanSkillsDir(dir: string, source: string): Promise<any[]> {
+  const skills: any[] = [];
+  try {
+    const glob = new Bun.Glob("**/SKILL.md");
+    for await (const file of glob.scan(dir)) {
+      try {
+        const content = await Bun.file(`${dir}/${file}`).text();
+        const fm = parseFrontmatter(content);
+        const dirName = file.replace(/\/SKILL\.md$/, "").replace(/\.md$/, "");
+        skills.push({
+          name: fm.name || dirName,
+          description: fm.description || "",
+          modelInvocable: fm["disable-model-invocation"] !== "true",
+          path: `${dir}/${file}`,
+          source,
+          argumentHint: fm["argument-hint"] || "",
+        });
+      } catch {}
+    }
+    // Also scan for top-level .md files (user skills like vet-assumptions.md)
+    const mdGlob = new Bun.Glob("*.md");
+    for await (const file of mdGlob.scan(dir)) {
+      const fullPath = `${dir}/${file}`;
+      // Skip if already found as SKILL.md
+      if (skills.some(s => s.path === fullPath)) continue;
+      try {
+        const content = await Bun.file(fullPath).text();
+        const fm = parseFrontmatter(content);
+        if (fm.name || fm.description) {
+          skills.push({
+            name: fm.name || file.replace(/\.md$/, ""),
+            description: fm.description || "",
+            modelInvocable: fm["disable-model-invocation"] !== "true",
+            path: fullPath,
+            source,
+            argumentHint: fm["argument-hint"] || "",
+          });
+        } else {
+          // Markdown without frontmatter — still list it
+          skills.push({
+            name: file.replace(/\.md$/, ""),
+            description: "",
+            modelInvocable: true,
+            path: fullPath,
+            source,
+            argumentHint: "",
+          });
+        }
+      } catch {}
+    }
+  } catch {}
+  return skills;
+}
+
+// Read global Claude Code config with rich introspection data
 async function getGlobalConfig(): Promise<object> {
   try {
     const settingsPath = `${process.env.HOME}/.claude/settings.json`;
     const settings = await Bun.file(settingsPath).json();
 
     const pluginsPath = `${process.env.HOME}/.claude/plugins/installed_plugins.json`;
-    let plugins: any[] = [];
-    try { plugins = await Bun.file(pluginsPath).json(); } catch {}
+    let pluginsData: any = {};
+    try { pluginsData = await Bun.file(pluginsPath).json(); } catch {}
 
     let statsCache: any = {};
     try { statsCache = await Bun.file(`${process.env.HOME}/.claude/stats-cache.json`).json(); } catch {}
@@ -380,43 +457,155 @@ async function getGlobalConfig(): Promise<object> {
       claudeVersion = (await $`claude --version 2>/dev/null`.text()).trim();
     } catch {}
 
-    // Scan for global skills
-    let globalSkills: string[] = [];
-    try {
-      const glob = new Bun.Glob("*.md");
-      const skillsDir = `${process.env.HOME}/.claude/skills`;
-      for await (const file of glob.scan(skillsDir)) {
-        globalSkills.push(file.replace(/\.md$/, ""));
+    // --- Rich Skills ---
+    // Global user skills
+    const userSkillsDir = `${process.env.HOME}/.claude/skills`;
+    const allSkills = await scanSkillsDir(userSkillsDir, "user");
+
+    // --- Rich Plugins ---
+    const enabledPlugins = settings.enabledPlugins || {};
+    const pluginRegistry = pluginsData.plugins || {};
+    const richPlugins: any[] = [];
+
+    for (const [fullName, enabled] of Object.entries(enabledPlugins)) {
+      const [name, marketplace] = fullName.split("@");
+      const entry: any = {
+        name,
+        fullName,
+        marketplace: marketplace || "local",
+        enabled: !!enabled,
+        version: "",
+        author: "",
+        description: "",
+        homepage: "",
+        skills: [] as string[],
+        hooks: {} as Record<string, number>,
+      };
+
+      // Look up install record
+      const installRecords = pluginRegistry[fullName];
+      if (installRecords && Array.isArray(installRecords) && installRecords.length > 0) {
+        const rec = installRecords[0];
+        entry.installPath = rec.installPath || "";
+        entry.version = rec.version || "";
+        entry.installedAt = rec.installedAt || "";
+        entry.lastUpdated = rec.lastUpdated || "";
+
+        // Read plugin.json for metadata
+        if (rec.installPath) {
+          try {
+            const pjson = await Bun.file(`${rec.installPath}/.claude-plugin/plugin.json`).json();
+            entry.description = pjson.description || "";
+            entry.author = typeof pjson.author === "object" ? pjson.author.name || "" : pjson.author || "";
+            entry.homepage = pjson.homepage || pjson.repository || "";
+            if (pjson.version) entry.version = pjson.version;
+          } catch {}
+
+          // Scan for plugin skills
+          try {
+            const skillsDir = `${rec.installPath}/skills`;
+            const pluginSkills = await scanSkillsDir(skillsDir, fullName);
+            entry.skills = pluginSkills.map((s: any) => s.name);
+            // Add plugin skills to global list
+            allSkills.push(...pluginSkills);
+          } catch {}
+
+          // Read plugin hooks
+          try {
+            const hooksJson = await Bun.file(`${rec.installPath}/hooks/hooks.json`).json();
+            const hooks = hooksJson.hooks || {};
+            for (const [event, hookArr] of Object.entries(hooks as Record<string, any[]>)) {
+              let count = 0;
+              for (const h of hookArr) {
+                count += ((h as any).hooks || [h]).length;
+              }
+              entry.hooks[event] = count;
+            }
+          } catch {}
+        }
       }
-    } catch {}
 
-    // Scan for MCP servers from settings
-    const mcpServers = settings.mcpServers
-      ? Object.keys(settings.mcpServers)
-      : [];
+      richPlugins.push(entry);
+    }
 
-    // Hook details
-    const hookDetails: Record<string, number> = {};
+    // --- Rich Hooks ---
+    // Collect all hooks with full details, grouped by event
+    const richHooks: Record<string, any[]> = {};
     if (settings.hooks) {
       for (const [event, hookArr] of Object.entries(settings.hooks as Record<string, any[]>)) {
-        let count = 0;
+        richHooks[event] = [];
         for (const entry of hookArr) {
-          count += (entry.hooks || [entry]).length;
+          const hooks = (entry as any).hooks || [entry];
+          for (const h of hooks) {
+            richHooks[event].push({
+              command: h.command || "",
+              timeout: h.timeout || null,
+              type: h.type || "command",
+              matcher: (entry as any).matcher || "",
+              source: "global",
+            });
+          }
         }
-        hookDetails[event] = count;
       }
+    }
+    // Also collect plugin hooks with source attribution
+    for (const plugin of richPlugins) {
+      if (plugin.installPath) {
+        try {
+          const hooksJson = await Bun.file(`${plugin.installPath}/hooks/hooks.json`).json();
+          const hooks = hooksJson.hooks || {};
+          for (const [event, hookArr] of Object.entries(hooks as Record<string, any[]>)) {
+            if (!richHooks[event]) richHooks[event] = [];
+            for (const entry of hookArr) {
+              const hList = (entry as any).hooks || [entry];
+              for (const h of hList) {
+                richHooks[event].push({
+                  command: h.command || "",
+                  timeout: h.timeout || null,
+                  type: h.type || "command",
+                  matcher: (entry as any).matcher || "",
+                  source: plugin.fullName,
+                });
+              }
+            }
+          }
+        } catch {}
+      }
+    }
+
+    // --- Rich MCP Servers ---
+    const mcpServers: any[] = [];
+    if (settings.mcpServers) {
+      for (const [name, config] of Object.entries(settings.mcpServers as Record<string, any>)) {
+        mcpServers.push({
+          name,
+          command: config.command || "",
+          args: config.args || [],
+          env: config.env ? Object.keys(config.env) : [],
+          type: config.type || "stdio",
+        });
+      }
+    }
+
+    // Legacy format for backward compatibility
+    const hookCounts: Record<string, number> = {};
+    for (const [event, hooks] of Object.entries(richHooks)) {
+      hookCounts[event] = hooks.length;
     }
 
     return {
       settings: {
         enabledPlugins: settings.enabledPlugins || {},
-        hooks: hookDetails,
+        hooks: hookCounts,
         env: settings.env || {},
         permissionDefaults: settings.skipDangerousModePermissionPrompt,
-        mcpServers,
+        mcpServers: mcpServers.map(s => s.name),
       },
-      plugins,
-      globalSkills,
+      plugins: richPlugins,
+      globalSkills: allSkills.filter(s => s.source === "user").map(s => s.name),
+      richSkills: allSkills,
+      richHooks,
+      richMcpServers: mcpServers,
       stats: {
         totalSessions: statsCache.totalSessions,
         totalMessages: statsCache.totalMessages,
