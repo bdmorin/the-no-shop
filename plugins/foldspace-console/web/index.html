@@ -563,6 +563,77 @@
     }
     .mise-toggle:hover { opacity: 1; }
 
+    /* === View Mode Toggle === */
+    .view-mode-bar {
+      display: flex; align-items: center; justify-content: flex-end;
+      padding: 0 36px; height: 28px; flex-shrink: 0;
+      background: var(--bg-surface);
+      border-bottom: 1px solid var(--border);
+    }
+    .view-mode-toggle {
+      display: flex; align-items: center; gap: 0;
+      background: var(--bg-inset); border: 1px solid var(--border);
+      border-radius: 3px; overflow: hidden; height: 20px;
+      font-family: var(--font-mono); font-size: 10px;
+      font-weight: 500; letter-spacing: 0.04em;
+    }
+    .view-mode-toggle .vmt-option {
+      padding: 0 10px; height: 100%; display: flex; align-items: center;
+      cursor: pointer; color: var(--text-dim);
+      transition: color 150ms var(--ease), background 150ms var(--ease);
+      user-select: none; border: none; background: none;
+      font-family: inherit; font-size: inherit; font-weight: inherit;
+      letter-spacing: inherit;
+    }
+    .view-mode-toggle .vmt-option:not(:last-child) {
+      border-right: 1px solid var(--border);
+    }
+    .view-mode-toggle .vmt-option:hover {
+      color: var(--text-muted);
+    }
+    .view-mode-toggle .vmt-option.active {
+      color: var(--teal); background: var(--teal-dim);
+    }
+
+    /* === Stream View Entries === */
+    .stream-entry {
+      margin-bottom: 28px;
+      animation: streamSlideIn 150ms var(--ease);
+    }
+    .stream-entry:not(:last-child) {
+      padding-bottom: 24px;
+      border-bottom: 1px solid var(--border);
+    }
+    @keyframes streamSlideIn {
+      from { opacity: 0; transform: translateY(6px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+    .stream-entry-header {
+      display: flex; gap: 8px; align-items: center;
+      font-size: 10px; font-family: var(--font-mono);
+      font-weight: 500; letter-spacing: 0.03em;
+      margin-bottom: 10px; color: var(--text-dim);
+    }
+    .stream-entry-header .stream-session-label {
+      color: var(--teal); opacity: 0.7;
+      max-width: 140px; overflow: hidden;
+      text-overflow: ellipsis; white-space: nowrap;
+    }
+    .stream-entry-header .stream-model {
+      color: var(--text-dim); opacity: 0.6;
+    }
+    /* Alternating session tint — subtle background shift */
+    .stream-entry.stream-tint-a {
+      background: transparent;
+    }
+    .stream-entry.stream-tint-b {
+      background: rgba(255,255,255,0.012);
+      border-radius: var(--r);
+      padding-left: 12px;
+      padding-right: 12px;
+      padding-top: 12px;
+    }
+
     /* Teal selection — user interaction color */
     ::selection { background: rgba(58, 158, 143, 0.18); }
     ::-webkit-scrollbar { width: 4px; height: 4px; }
@@ -754,6 +825,12 @@
   <div id="main">
     <div id="content">
       <div class="session-header" id="session-header" style="display:none"></div>
+      <div class="view-mode-bar">
+        <div class="view-mode-toggle">
+          <button class="vmt-option active" data-mode="session" onclick="setViewMode('session')">session</button>
+          <button class="vmt-option" data-mode="stream" onclick="setViewMode('stream')">stream</button>
+        </div>
+      </div>
       <div id="responses-area">
         <div id="responses"></div>
         <div id="empty-state">
@@ -825,6 +902,14 @@
   let globalConfig = null;
   let miseData = null;
   let miseLoaded = false;
+
+  // View mode: 'session' (default) or 'stream'
+  let viewMode = localStorage.getItem('foldspace-view-mode') || 'session';
+  // Stream buffer: chronological list of all responses across sessions
+  const streamBuffer = [];
+  // Track session tint assignment for alternating backgrounds
+  const streamSessionTints = new Map();
+  let streamTintCounter = 0;
 
   const PORT = window.location.port || 3377;
   const WS_URL = `ws://${window.location.hostname}:${PORT}/ws`;
@@ -1083,6 +1168,61 @@
   };
   marked.setOptions({ renderer });
 
+  // === View Mode ===
+  function setViewMode(mode) {
+    viewMode = mode;
+    localStorage.setItem('foldspace-view-mode', mode);
+    document.querySelectorAll('.vmt-option').forEach(btn => {
+      btn.classList.toggle('active', btn.dataset.mode === mode);
+    });
+    if (mode === 'session') {
+      renderSessionHeader();
+      renderAllResponses();
+    } else {
+      // In stream mode, hide session header — each entry carries its own label
+      $('session-header').style.display = 'none';
+      renderStreamView();
+    }
+    if (autoScroll) scrollBottom();
+  }
+
+  function getStreamTint(sessionId) {
+    if (!streamSessionTints.has(sessionId)) {
+      streamSessionTints.set(sessionId, streamTintCounter % 2 === 0 ? 'a' : 'b');
+      streamTintCounter++;
+    }
+    return streamSessionTints.get(sessionId);
+  }
+
+  function renderStreamView() {
+    const c = $('responses'); c.innerHTML = '';
+    if (!streamBuffer.length) { $('empty-state').style.display = 'flex'; return; }
+    $('empty-state').style.display = 'none';
+    streamBuffer.forEach((resp, i) => renderStreamEntry(resp, i + 1));
+  }
+
+  function renderStreamEntry(resp, num) {
+    const d = document.createElement('div');
+    const tint = getStreamTint(resp.sessionId);
+    d.className = 'stream-entry stream-tint-' + tint;
+    d.dataset.responseId = resp.id;
+    d.dataset.sessionId = resp.sessionId;
+    const t = new Date(resp.timestamp).toLocaleTimeString();
+    const meta = sessions.get(resp.sessionId);
+    const label = meta ? sessionLabel(meta) : resp.sessionId.slice(0, 8);
+    const model = meta ? (meta.model || 'unknown').replace('claude-', '').replace(/-\d+$/, '') : '';
+    d.innerHTML = `<div class="stream-entry-header"><span class="stream-session-label" title="${esc(resp.sessionId)}">${esc(label)}</span><span>${t}</span>${model ? `<span class="stream-model">${esc(model)}</span>` : ''}<span class="response-num">#${num}</span></div><div class="md">${marked.parse(resp.content || '')}</div>`;
+    $('responses').appendChild(d);
+  }
+
+  function appendStreamEntry(resp) {
+    streamBuffer.push(resp);
+    if (viewMode !== 'stream') return;
+    $('empty-state').style.display = 'none';
+    renderStreamEntry(resp, streamBuffer.length);
+    if (autoScroll) scrollBottom();
+  }
+
   // === WebSocket ===
   function connectWS() {
     ws = new WebSocket(WS_URL);
@@ -1103,14 +1243,26 @@
 
   function onInit(data) {
     sessions.clear(); responses.clear(); allAnnotations.clear();
+    streamBuffer.length = 0;
+    streamSessionTints.clear();
+    streamTintCounter = 0;
     (data.sessions || []).forEach(s => sessions.set(s.sessionId, s));
     for (const [sid, r] of Object.entries(data.responses || {})) responses.set(sid, r);
     for (const [sid, a] of Object.entries(data.annotations || {})) allAnnotations.set(sid, a);
+    // Populate stream buffer from all session responses, sorted chronologically
+    for (const [sid, resps] of responses) {
+      for (const r of resps) streamBuffer.push(r);
+    }
+    streamBuffer.sort((a, b) => a.timestamp - b.timestamp);
+    // Pre-assign tints for existing sessions in chronological order
+    streamBuffer.forEach(r => getStreamTint(r.sessionId));
     renderTabs();
     if (sessions.size > 0 && !activeSessionId) {
       const latest = [...sessions.values()].sort((a,b) => b.lastActivity - a.lastActivity)[0];
-      switchSession(latest.sessionId);
+      activeSessionId = latest.sessionId;
     }
+    // Apply stored view mode
+    setViewMode(viewMode);
     updateStatus();
     loadConfig();
   }
@@ -1136,7 +1288,10 @@
     responses.get(sid).push(resp);
     const m = sessions.get(sid);
     if (m) { m.lastActivity = Date.now(); m.turnCount = (m.turnCount || 0) + 1; }
-    if (sid === activeSessionId) {
+    // Always feed the stream buffer
+    appendStreamEntry(resp);
+    // Session view: only render if active session matches
+    if (viewMode === 'session' && sid === activeSessionId) {
       renderResponse(resp, responses.get(sid).length);
       $('empty-state').style.display = 'none';
       renderSessionHeader();
@@ -1527,7 +1682,12 @@
   function switchSession(sid) {
     activeSessionId = sid;
     headerSessionId = null; // Force full header rebuild on session switch
-    renderTabs(); renderSessionHeader(); renderAllResponses(); renderAnnotations();
+    renderTabs();
+    if (viewMode === 'session') {
+      renderSessionHeader(); renderAllResponses();
+    }
+    // Stream view doesn't change on session switch — it shows everything
+    renderAnnotations();
   }
 
   // === Session Header ===
@@ -1667,7 +1827,7 @@
   document.addEventListener('mouseup', (e) => {
     const sel = window.getSelection(); const txt = sel.toString().trim();
     if (!txt || txt.length < 3) { hidePopup(); return; }
-    const entry = e.target.closest('.response-entry');
+    const entry = e.target.closest('.response-entry') || e.target.closest('.stream-entry');
     if (!entry) { hidePopup(); return; }
     pendingSelection = { text: txt, responseId: entry.dataset.responseId, sessionId: entry.dataset.sessionId || activeSessionId };
     const rect = sel.getRangeAt(0).getBoundingClientRect();
@@ -1762,6 +1922,11 @@
 
   $('responses-area').addEventListener('scroll', (e) => {
     const t = e.target; autoScroll = (t.scrollHeight - t.scrollTop - t.clientHeight) < 100;
+  });
+
+  // Apply stored view mode to toggle buttons on load
+  document.querySelectorAll('.vmt-option').forEach(btn => {
+    btn.classList.toggle('active', btn.dataset.mode === viewMode);
   });
 
   connectWS();
