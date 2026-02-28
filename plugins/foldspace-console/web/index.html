@@ -9,6 +9,7 @@
   <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github-dark.min.css">
   <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/dompurify@3/dist/purify.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js"></script>
   <style>
     :root, :root[data-theme="void"] {
@@ -1461,18 +1462,18 @@
       fontSize: '13px',
     },
   });
-  let mermaidIdCounter = 0;
+  let sidecarIdCounter = 0;
 
   // === Sidecar Component Renderers ===
 
   function sidecarWrap(type, rawText, bodyHtml) {
-    const escaped = rawText.replace(/"/g, '&quot;').replace(/</g, '&lt;');
+    const escaped = rawText.replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/'/g, '&#39;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
     const label = type.replace('sidecar-', '');
     return `<div class="sidecar sidecar-${esc(label)}"><div class="sidecar-header"><span class="sidecar-label">${esc(label)}</span><button class="copy-btn" onclick="copyCode(this)" data-code="${escaped}">copy</button></div>${bodyHtml}</div>`;
   }
 
   function renderSidecarMermaid(text) {
-    const id = 'mermaid-' + (++mermaidIdCounter);
+    const id = 'mermaid-' + (++sidecarIdCounter);
     // Render async after DOM insertion; placeholder gets replaced via MutationObserver
     setTimeout(() => {
       const el = document.getElementById(id);
@@ -1499,7 +1500,7 @@
         '<div class="sidecar-body"><span style="color:var(--text-dim);font-size:12px;font-family:var(--font-mono)">empty dataset</span></div>');
     }
 
-    const tableId = 'sctable-' + (++mermaidIdCounter);
+    const tableId = 'sctable-' + (++sidecarIdCounter);
     const cols = Object.keys(data[0]);
     let thead = '<tr>' + cols.map(c =>
       `<th data-col="${esc(c)}" onclick="sortSidecarTable(this)">${esc(c)}<span class="sort-arrow">&#9650;</span></th>`
@@ -1684,7 +1685,7 @@
     const highlighted = lang && hljs.getLanguage(lang)
       ? hljs.highlight(text, { language: lang }).value
       : hljs.highlightAuto(text).value;
-    const escaped = text.replace(/"/g, '&quot;').replace(/</g, '&lt;');
+    const escaped = text.replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/'/g, '&#39;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
     return `<pre><div class="code-header"><span class="code-lang">${esc(langLabel)}</span><button class="copy-btn" onclick="copyCode(this)" data-code="${escaped}">copy</button></div><code>${highlighted}</code></pre>`;
   };
   marked.setOptions({ renderer });
@@ -1732,7 +1733,7 @@
     const meta = sessions.get(resp.sessionId);
     const label = meta ? sessionLabel(meta) : resp.sessionId.slice(0, 8);
     const model = meta ? (meta.model || 'unknown').replace('claude-', '').replace(/-\d+$/, '') : '';
-    d.innerHTML = `<div class="stream-entry-header"><span class="stream-session-label" title="${esc(resp.sessionId)}">${esc(label)}</span><span>${t}</span>${model ? `<span class="stream-model">${esc(model)}</span>` : ''}<span class="response-num">#${num}</span></div><div class="md">${marked.parse(resp.content || '')}</div>`;
+    d.innerHTML = `<div class="stream-entry-header"><span class="stream-session-label" title="${esc(resp.sessionId)}">${esc(label)}</span><span>${t}</span>${model ? `<span class="stream-model">${esc(model)}</span>` : ''}<span class="response-num">#${num}</span></div><div class="md">${DOMPurify.sanitize(marked.parse(resp.content || ''))}</div>`;
     $('responses').appendChild(d);
   }
 
@@ -1785,7 +1786,6 @@
     }
     // Apply stored view mode
     setViewMode(viewMode);
-    updateStatus();
     updateStatusSessionLabel();
     loadConfig();
   }
@@ -1796,7 +1796,7 @@
     if (!allAnnotations.has(meta.sessionId)) allAnnotations.set(meta.sessionId, []);
     renderTabs();
     switchSession(meta.sessionId);
-    updateStatus();
+    updateStatusSessionLabel();
   }
 
   function onSessionEnded(data) {
@@ -1820,7 +1820,7 @@
       renderSessionHeader();
       if (autoScroll) scrollBottom();
     }
-    renderTabs(); updateStatus();
+    renderTabs(); updateStatusSessionLabel();
     // Debounced context docs refresh when active session gets new responses
     if (sid === activeSessionId && $('context-panel').classList.contains('active')) {
       scheduleContextDocsRefresh();
@@ -1919,8 +1919,8 @@
     if (stats.totalSessions) {
       html += `<div class="sys-section"><div class="sys-section-title">stats</div>
         <div class="sys-stats-grid">
-          <div class="sys-stat-card"><div class="sys-stat animated-num" id="sys-total-sessions" data-raw-value="${stats.totalSessions}">${formatNum(stats.totalSessions)}</div><div class="sys-stat-label">sessions</div></div>
-          <div class="sys-stat-card"><div class="sys-stat animated-num" id="sys-total-messages" data-raw-value="${stats.totalMessages}">${formatNum(stats.totalMessages)}</div><div class="sys-stat-label">messages</div></div>
+          <div class="sys-stat-card"><div class="sys-stat animated-num" id="sys-total-sessions" data-raw-value="${stats.totalSessions}">${formatTokens(stats.totalSessions)}</div><div class="sys-stat-label">sessions</div></div>
+          <div class="sys-stat-card"><div class="sys-stat animated-num" id="sys-total-messages" data-raw-value="${stats.totalMessages}">${formatTokens(stats.totalMessages)}</div><div class="sys-stat-label">messages</div></div>
         </div>
         ${stats.firstSessionDate ? `<div class="sys-item"><span class="name">first session</span><span class="val">${new Date(stats.firstSessionDate).toLocaleDateString()}</span></div>` : ''}
       </div>`;
@@ -2176,7 +2176,8 @@
     if (configEntries.length > 0) {
       html += '<div class="sys-section"><div class="sys-section-title">mise config</div>';
       for (const [filename] of configEntries) {
-        html += `<button class="mise-config-link" onclick="openConfigModal('${esc(filename)}')">${esc(filename)}</button>`;
+        const safeFilename = filename.replace(/\\/g, '\\\\').replace(/'/g, "\\'");
+        html += `<button class="mise-config-link" onclick="openConfigModal('${safeFilename}')">${esc(filename)}</button>`;
       }
       html += '</div>';
     }
@@ -2382,7 +2383,7 @@
         </div>
         <div class="sh-grid">
           ${mi('branch', m.gitBranch||'-')}${mi('repo', m.gitRepo||'-')}${mi('started', started)}
-          ${miAnim('turns', m.turnCount||0, 'sh-turns', formatNum)}${miAnim('in', m.totalTokensIn||0, 'sh-tok-in', formatTokens)}${miAnim('out', m.totalTokensOut||0, 'sh-tok-out', formatTokens)}
+          ${miAnim('turns', m.turnCount||0, 'sh-turns', formatTokens)}${miAnim('in', m.totalTokensIn||0, 'sh-tok-in', formatTokens)}${miAnim('out', m.totalTokensOut||0, 'sh-tok-out', formatTokens)}
           ${m.claudeVersion ? mi('cc', m.claudeVersion) : ''}
         </div>
         ${renderGitStatus(m.gitStatus)}`;
@@ -2390,7 +2391,7 @@
     }
 
     // Same session — animate the changing numeric values
-    updateAnimatedNum($('sh-turns'), m.turnCount || 0, formatNum);
+    updateAnimatedNum($('sh-turns'), m.turnCount || 0, formatTokens);
     updateAnimatedNum($('sh-tok-in'), m.totalTokensIn || 0, formatTokens);
     updateAnimatedNum($('sh-tok-out'), m.totalTokensOut || 0, formatTokens);
     // Re-render git status (it changes independently of numeric stats)
@@ -2454,7 +2455,7 @@
     d.dataset.responseId = resp.id;
     d.dataset.sessionId = resp.sessionId;
     const t = new Date(resp.timestamp).toLocaleTimeString();
-    d.innerHTML = `<div class="response-meta"><span class="response-num">${num}</span><span>${t}</span></div><div class="md">${marked.parse(resp.content||'')}</div>`;
+    d.innerHTML = `<div class="response-meta"><span class="response-num">${num}</span><span>${t}</span></div><div class="md">${DOMPurify.sanitize(marked.parse(resp.content||''))}</div>`;
     $('responses').appendChild(d);
   }
 
@@ -2642,7 +2643,7 @@
 
   // === Copy Code ===
   function copyCode(btn) {
-    const code = btn.dataset.code.replace(/&quot;/g, '"').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&amp;/g, '&');
+    const code = btn.dataset.code.replace(/&#39;/g, "'").replace(/&quot;/g, '"').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&amp;/g, '&');
     navigator.clipboard.writeText(code).then(() => {
       btn.textContent = 'copied'; btn.classList.add('copied');
       setTimeout(() => { btn.textContent = 'copy'; btn.classList.remove('copied'); }, 1500);
@@ -2789,9 +2790,7 @@
   function $(id) { return document.getElementById(id); }
   function esc(t) { const d = document.createElement('div'); d.textContent = t; return d.innerHTML; }
   function scrollBottom() { const a = $('responses-area'); a.scrollTop = a.scrollHeight; }
-  function updateStatus() { updateStatusSessionLabel(); }
   function formatTokens(n) { if (n >= 1e6) return (n/1e6).toFixed(1)+'M'; if (n >= 1e3) return (n/1e3).toFixed(1)+'K'; return String(n); }
-  function formatNum(n) { if (n >= 1e6) return (n/1e6).toFixed(1)+'M'; if (n >= 1e3) return (n/1e3).toFixed(1)+'K'; return String(n); }
 
   $('responses-area').addEventListener('scroll', (e) => {
     const t = e.target; autoScroll = (t.scrollHeight - t.scrollTop - t.clientHeight) < 100;

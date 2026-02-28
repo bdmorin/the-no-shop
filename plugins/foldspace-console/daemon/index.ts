@@ -203,11 +203,14 @@ function maskSecret(value: string): string {
 async function runWithTimeout(cmd: string[], timeoutMs: number): Promise<string | null> {
   try {
     const proc = Bun.spawn(cmd, { stdout: "pipe", stderr: "pipe" });
-    const timer = setTimeout(() => proc.kill(), timeoutMs);
-    const exitCode = await proc.exited;
-    clearTimeout(timer);
-    if (exitCode !== 0) return null;
-    return await new Response(proc.stdout).text();
+    const result = await Promise.race([
+      proc.exited.then(async (code) => {
+        if (code !== 0) return null;
+        return await new Response(proc.stdout).text();
+      }),
+      new Promise<null>((resolve) => setTimeout(() => { proc.kill(); resolve(null); }, timeoutMs)),
+    ]);
+    return result;
   } catch {
     return null;
   }
@@ -778,9 +781,9 @@ function resolveTranscriptPath(meta: SessionMeta): string | null {
   return `${process.env.HOME}/.claude/projects/${slug}/${meta.sessionId}.jsonl`;
 }
 
-// Parse a transcript JSONL file to extract all file-accessing tool calls.
+// Parse a transcript JSONL text to extract all file-accessing tool calls.
 // Extracts: Read (file_path), Glob (pattern results), Grep (path), Edit (file_path), Write (file_path)
-async function parseContextDocs(transcriptPath: string, cwd: string): Promise<ContextDocsResult> {
+function parseContextDocsFromText(text: string, cwd: string): ContextDocsResult {
   const fileMap = new Map<string, { readCount: number; firstRead: string; lastRead: string; tool: string }>();
 
   function trackFile(filePath: string, tool: string, timestamp: string) {
@@ -813,7 +816,6 @@ async function parseContextDocs(transcriptPath: string, cwd: string): Promise<Co
   }
 
   try {
-    const text = await Bun.file(transcriptPath).text();
     for (const line of text.split("\n")) {
       if (!line.trim()) continue;
       try {
@@ -931,7 +933,7 @@ const server = Bun.serve({
     }
 
     const corsHeaders = {
-      "Access-Control-Allow-Origin": "*",
+      "Access-Control-Allow-Origin": "http://localhost:" + PORT,
       "Access-Control-Allow-Methods": "GET, POST, DELETE, OPTIONS",
       "Access-Control-Allow-Headers": "Content-Type",
     };
@@ -944,7 +946,12 @@ const server = Bun.serve({
     if (url.pathname === "/api/session" && req.method === "POST") {
       const body = await req.json();
       const sid = body.sessionId;
-      if (!sid) return Response.json({ ok: false, error: "missing sessionId" }, { status: 400, headers: corsHeaders });
+      if (!sid || typeof sid !== "string" || sid.trim() === "") {
+        return Response.json({ ok: false, error: "sessionId must be a non-empty string" }, { status: 400, headers: corsHeaders });
+      }
+      if (body.cwd !== undefined && typeof body.cwd !== "string") {
+        return Response.json({ ok: false, error: "cwd must be a string" }, { status: 400, headers: corsHeaders });
+      }
 
       const git = await getGitInfo(body.cwd || ".");
 
@@ -1142,29 +1149,28 @@ const server = Bun.serve({
       // Check cache
       const cached = contextDocsCache.get(sid);
 
+      // Read transcript text once for both cache check and parsing
+      let text: string;
+      try {
+        text = await Bun.file(transcriptPath).text();
+      } catch {
+        // File inaccessible; serve stale cache if available
+        if (cached) return Response.json(cached.result, { headers: corsHeaders });
+        return Response.json({ files: [], totalReads: 0, uniqueFiles: 0 }, { headers: corsHeaders });
+      }
+
       if (cached) {
         const age = Date.now() - cached.ts;
-        if (age < CONTEXT_DOCS_TTL) {
-          // Within TTL: serve cache unless file grew (transcript still being written)
-          try {
-            const currentSize = Bun.file(transcriptPath).size;
-            if (currentSize === cached.fileSize) {
-              return Response.json(cached.result, { headers: corsHeaders });
-            }
-          } catch {
-            // File inaccessible; serve stale cache
-            return Response.json(cached.result, { headers: corsHeaders });
-          }
+        if (age < CONTEXT_DOCS_TTL && text.length === cached.fileSize) {
+          return Response.json(cached.result, { headers: corsHeaders });
         }
       }
 
-      // Parse transcript
-      const result = await parseContextDocs(transcriptPath, meta.cwd || "");
+      // Parse transcript from text
+      const result = parseContextDocsFromText(text, meta.cwd || "");
 
-      // Cache result with file size
-      let fileSize = 0;
-      try { fileSize = Bun.file(transcriptPath).size; } catch {}
-      contextDocsCache.set(sid, { result, ts: Date.now(), fileSize });
+      // Cache result with text length
+      contextDocsCache.set(sid, { result, ts: Date.now(), fileSize: text.length });
 
       return Response.json(result, { headers: corsHeaders });
     }
@@ -1207,15 +1213,18 @@ const server = Bun.serve({
       return Response.json({ ok: true }, { headers: corsHeaders });
     }
 
-    // Serve the SPA
-    try {
-      const html = await Bun.file(spaPath).text();
-      return new Response(html, {
-        headers: { "Content-Type": "text/html", ...corsHeaders },
-      });
-    } catch {
-      return new Response("SPA not found.", { status: 404, headers: corsHeaders });
+    // Serve the SPA only for root and index.html
+    if (url.pathname === "/" || url.pathname === "/index.html") {
+      try {
+        const html = await Bun.file(spaPath).text();
+        return new Response(html, {
+          headers: { "Content-Type": "text/html", ...corsHeaders },
+        });
+      } catch {
+        return new Response("SPA not found.", { status: 404, headers: corsHeaders });
+      }
     }
+    return new Response("Not found", { status: 404, headers: corsHeaders });
   },
 
   websocket: {
@@ -1255,6 +1264,9 @@ const server = Bun.serve({
 
 const HEARTBEAT_INTERVAL = 8000;
 
+// Track transcript file sizes per session to skip re-parsing unchanged files
+const lastTranscriptSize = new Map<string, number>();
+
 // Take an initial CPU snapshot so the first heartbeat has a valid delta
 prevCpuSnapshot = os.cpus();
 
@@ -1269,6 +1281,12 @@ setInterval(async () => {
     if (!meta.transcriptPath) continue;
 
     try {
+      // Quick-check: skip re-parse if file size hasn't changed
+      const currentSize = Bun.file(meta.transcriptPath).size;
+      const prevSize = lastTranscriptSize.get(sid) || 0;
+      if (currentSize === prevSize) continue;
+      lastTranscriptSize.set(sid, currentSize);
+
       const stats = await scanTranscript(meta.transcriptPath);
       const changed =
         stats.totalTokensIn !== meta.totalTokensIn ||
