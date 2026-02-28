@@ -766,6 +766,78 @@
     }
     .mise-toggle:hover { opacity: 1; }
 
+    /* === Context Docs Panel === */
+    #context-panel { padding: 0; display: flex; flex-direction: column; }
+    .ctx-summary {
+      padding: 10px 12px; border-bottom: 1px solid var(--border);
+      font-size: 11px; color: var(--text-muted); font-family: var(--font-mono);
+      font-weight: 500; letter-spacing: 0.02em; flex-shrink: 0;
+      display: flex; justify-content: space-between; align-items: center;
+    }
+    .ctx-summary .ctx-count { color: var(--teal); }
+    .ctx-list { flex: 1; overflow-y: auto; padding: 4px 0; }
+    .ctx-group {
+      margin-bottom: 2px;
+    }
+    .ctx-group-header {
+      display: flex; align-items: center; gap: 5px;
+      padding: 5px 12px; cursor: pointer;
+      font-size: 11px; font-weight: 600; color: var(--text-muted);
+      font-family: var(--font-mono); letter-spacing: 0.01em;
+      transition: background 150ms var(--ease), color 150ms var(--ease);
+      user-select: none;
+    }
+    .ctx-group-header:hover { background: var(--bg-hover); color: var(--text); }
+    .ctx-group-chevron {
+      font-size: 9px; color: var(--text-dim);
+      transition: transform 150ms var(--ease);
+      width: 10px; text-align: center; flex-shrink: 0;
+    }
+    .ctx-group-header.expanded .ctx-group-chevron { transform: rotate(90deg); }
+    .ctx-group-dir {
+      flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+    }
+    .ctx-group-count {
+      font-size: 9px; color: var(--text-dim); font-weight: 500; flex-shrink: 0;
+    }
+    .ctx-group-items { display: none; }
+    .ctx-group-header.expanded + .ctx-group-items { display: block; }
+    .ctx-file {
+      display: flex; align-items: center; gap: 6px;
+      padding: 3px 12px 3px 28px;
+      font-size: 11px; cursor: pointer;
+      transition: background 120ms var(--ease);
+    }
+    .ctx-file:hover { background: var(--bg-hover); }
+    .ctx-file-name {
+      flex: 1; color: var(--text); font-family: var(--font-mono);
+      overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+      font-weight: 400;
+    }
+    .ctx-file-tool {
+      font-size: 9px; font-weight: 600; font-family: var(--font-mono);
+      padding: 1px 4px; border-radius: 2px; flex-shrink: 0;
+      letter-spacing: 0.02em; text-transform: uppercase;
+    }
+    .ctx-file-tool.tool-read { color: var(--teal); background: var(--teal-dim); }
+    .ctx-file-tool.tool-glob { color: var(--yellow); background: rgba(158,138,58,0.07); }
+    .ctx-file-tool.tool-grep { color: var(--amber); background: var(--amber-dim); }
+    .ctx-file-tool.tool-edit { color: var(--green); background: rgba(58,158,106,0.08); }
+    .ctx-file-tool.tool-write { color: var(--green); background: rgba(58,158,106,0.08); }
+    .ctx-file-badge {
+      font-size: 9px; color: var(--text-dim); font-family: var(--font-mono);
+      font-weight: 500; min-width: 14px; text-align: right; flex-shrink: 0;
+    }
+    .ctx-toast {
+      position: fixed; bottom: 40px; left: 50%; transform: translateX(-50%);
+      background: var(--bg-elevated); border: 1px solid var(--teal);
+      color: var(--teal); font-size: 11px; font-family: var(--font-mono);
+      padding: 4px 12px; border-radius: var(--r); z-index: 1100;
+      opacity: 0; transition: opacity 150ms var(--ease);
+      pointer-events: none;
+    }
+    .ctx-toast.visible { opacity: 1; }
+
     /* === System Introspection Accordion === */
     .sys-accordion {
       margin-bottom: 2px;
@@ -1140,6 +1212,9 @@
         <div class="sidebar-tab active" data-panel="annotations-panel" onclick="switchSidebarTab(this)">
           annotations<span class="badge" id="annotation-count">0</span>
         </div>
+        <div class="sidebar-tab" data-panel="context-panel" onclick="switchSidebarTab(this)">
+          context<span class="badge" id="context-count">0</span>
+        </div>
         <div class="sidebar-tab" data-panel="system-panel" onclick="switchSidebarTab(this)">
           system
         </div>
@@ -1147,6 +1222,14 @@
       <div class="sidebar-panel active" id="annotations-panel">
         <div id="annotation-list">
           <div class="sidebar-hint">Select text in a response to annotate it.<br>Annotations inject as context on your next prompt.</div>
+        </div>
+      </div>
+      <div class="sidebar-panel" id="context-panel">
+        <div class="ctx-summary">
+          <span><span class="ctx-count" id="ctx-unique">0</span> files, <span class="ctx-count" id="ctx-total">0</span> reads</span>
+        </div>
+        <div class="ctx-list" id="ctx-list">
+          <div class="sidebar-hint">File reads appear here as<br>the model accesses files.</div>
         </div>
       </div>
       <div class="sidebar-panel" id="system-panel">
@@ -1175,6 +1258,8 @@
     <button class="btn btn-primary" id="popup-submit">annotate</button>
   </div>
 </div>
+
+<div class="ctx-toast" id="ctx-toast">copied</div>
 
 <div class="modal-overlay" id="config-modal">
   <div class="modal-panel">
@@ -1736,6 +1821,10 @@
       if (autoScroll) scrollBottom();
     }
     renderTabs(); updateStatus();
+    // Debounced context docs refresh when active session gets new responses
+    if (sid === activeSessionId && $('context-panel').classList.contains('active')) {
+      scheduleContextDocsRefresh();
+    }
   }
 
   function onAnnotationAdded(ann) {
@@ -1763,7 +1852,13 @@
     m.totalTokensOut = data.totalTokensOut;
     m.turnCount = data.turnCount;
     m.lastActivity = Date.now();
-    if (data.sessionId === activeSessionId) renderSessionHeader();
+    if (data.sessionId === activeSessionId) {
+      renderSessionHeader();
+      // Stats update means new transcript data; refresh context docs if visible
+      if ($('context-panel').classList.contains('active')) {
+        scheduleContextDocsRefresh();
+      }
+    }
   }
 
   function onSystemStats(data) {
@@ -2250,6 +2345,8 @@
   function switchSession(sid) {
     activeSessionId = sid;
     headerSessionId = null; // Force full header rebuild on session switch
+    contextDocsSessionId = null; // Force context docs reload on session switch
+    contextDocsData = null;
     renderTabs();
     if (viewMode === 'session') {
       renderSessionHeader(); renderAllResponses();
@@ -2257,6 +2354,8 @@
     renderAnnotations();
     updateStatusSessionLabel();
     if (currentLayout === 'split') syncSplitAnnotations();
+    // Refresh context docs if the panel is visible
+    if ($('context-panel').classList.contains('active')) loadContextDocs(true);
   }
 
   // === Session Header ===
@@ -2391,6 +2490,114 @@
     $(el.dataset.panel).classList.add('active');
     // Lazy-load mise data when System tab is opened
     if (el.dataset.panel === 'system-panel') loadMise();
+    // Lazy-load context docs when Context tab is opened
+    if (el.dataset.panel === 'context-panel') loadContextDocs();
+  }
+
+  // === Context Documents ===
+  let contextDocsData = null;
+  let contextDocsSessionId = null;
+  let contextDocsLoading = false;
+  let contextDocsRefreshTimer = null;
+
+  function scheduleContextDocsRefresh() {
+    if (contextDocsRefreshTimer) clearTimeout(contextDocsRefreshTimer);
+    contextDocsRefreshTimer = setTimeout(() => {
+      contextDocsRefreshTimer = null;
+      loadContextDocs(true);
+    }, 3000); // 3s debounce: transcripts take a moment to flush
+  }
+
+  async function loadContextDocs(force) {
+    if (!activeSessionId) return;
+    // Skip if already loaded for this session and not forced
+    if (!force && contextDocsSessionId === activeSessionId && contextDocsData) return;
+    if (contextDocsLoading) return;
+
+    contextDocsLoading = true;
+    try {
+      const resp = await fetch(`${API}/api/context-docs?session=${activeSessionId}`);
+      if (!resp.ok) throw new Error('fetch failed');
+      contextDocsData = await resp.json();
+      contextDocsSessionId = activeSessionId;
+      renderContextDocs();
+    } catch {
+      $('ctx-list').innerHTML = '<div class="sidebar-hint">unable to load context docs</div>';
+    } finally {
+      contextDocsLoading = false;
+    }
+  }
+
+  function renderContextDocs() {
+    const data = contextDocsData;
+    if (!data) return;
+
+    // Update summary counts
+    $('ctx-unique').textContent = data.uniqueFiles;
+    $('ctx-total').textContent = data.totalReads;
+    $('context-count').textContent = data.uniqueFiles || '0';
+
+    const list = $('ctx-list');
+    if (!data.files || data.files.length === 0) {
+      list.innerHTML = '<div class="sidebar-hint">No file reads yet.<br>Files appear as the model accesses them.</div>';
+      return;
+    }
+
+    // Group files by directory
+    const groups = new Map();
+    for (const f of data.files) {
+      const parts = f.shortPath.split('/');
+      const dir = parts.length > 1 ? parts.slice(0, -1).join('/') : '.';
+      if (!groups.has(dir)) groups.set(dir, []);
+      groups.get(dir).push(f);
+    }
+
+    // Sort groups: most recently accessed first
+    const sortedGroups = [...groups.entries()].sort((a, b) => {
+      const aMax = a[1].reduce((m, f) => f.lastRead > m ? f.lastRead : m, '');
+      const bMax = b[1].reduce((m, f) => f.lastRead > m ? f.lastRead : m, '');
+      return bMax.localeCompare(aMax);
+    });
+
+    let html = '';
+    for (const [dir, files] of sortedGroups) {
+      const groupId = 'ctx-g-' + dir.replace(/[^a-zA-Z0-9]/g, '-');
+      html += `<div class="ctx-group">
+        <div class="ctx-group-header expanded" onclick="this.classList.toggle('expanded')">
+          <span class="ctx-group-chevron">&rsaquo;</span>
+          <span class="ctx-group-dir" title="${esc(dir)}">${esc(dir)}/</span>
+          <span class="ctx-group-count">${files.length}</span>
+        </div>
+        <div class="ctx-group-items">`;
+
+      // Sort files within group by most recent
+      files.sort((a, b) => b.lastRead.localeCompare(a.lastRead));
+
+      for (const f of files) {
+        const fileName = f.shortPath.split('/').pop() || f.shortPath;
+        const toolClass = 'tool-' + f.tool.toLowerCase();
+        const badge = f.readCount > 1 ? `<span class="ctx-file-badge">${f.readCount}x</span>` : '';
+        const safePath = f.path.replace(/\\/g, '\\\\').replace(/'/g, "\\'");
+        html += `<div class="ctx-file" onclick="copyCtxPath('${safePath}')" title="${esc(f.path)}">
+          <span class="ctx-file-name">${esc(fileName)}</span>
+          <span class="ctx-file-tool ${toolClass}">${esc(f.tool)}</span>
+          ${badge}
+        </div>`;
+      }
+
+      html += '</div></div>';
+    }
+
+    list.innerHTML = html;
+  }
+
+  function copyCtxPath(path) {
+    navigator.clipboard.writeText(path).then(() => {
+      const toast = $('ctx-toast');
+      toast.textContent = 'copied: ' + path.split('/').pop();
+      toast.classList.add('visible');
+      setTimeout(() => toast.classList.remove('visible'), 1200);
+    });
   }
 
   // === Annotation Popup ===
