@@ -11,9 +11,9 @@
   <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js"></script>
   <style>
-    :root {
+    :root, :root[data-theme="void"] {
       /*
-       * Subterranean Precision
+       * Subterranean Precision — Void
        * Deep blue-black backgrounds with cold undertone.
        * Amber: brand accent, used sparingly — one indicator light, not paint.
        * Teal: signal color — active states, user interactions, status.
@@ -52,6 +52,69 @@
       --r: 4px;
       --r-lg: 6px;
       --ease: cubic-bezier(0.25, 0.1, 0.25, 1);
+
+      /* Hljs override token for theme-aware code blocks */
+      --hljs-bg: var(--bg-inset);
+    }
+
+    /* Slate — lighter dark, easier on eyes in daylight */
+    :root[data-theme="slate"] {
+      --bg: #1a1d24;
+      --bg-surface: #1f222b;
+      --bg-elevated: #252830;
+      --bg-hover: #2a2d36;
+      --bg-inset: #15171e;
+      --border: rgba(255,255,255,0.08);
+      --border-bright: rgba(255,255,255,0.13);
+
+      --text: #a0abbe;
+      --text-bright: #d5dae4;
+      --text-muted: #738093;
+      --text-dim: #4a5567;
+
+      --amber: #c4963f;
+      --amber-dim: rgba(196,150,63,0.10);
+      --amber-bright: #dbb050;
+
+      --teal: #42ac9c;
+      --teal-dim: rgba(66,172,156,0.09);
+      --teal-bright: #5cc4b4;
+
+      --green: #42ac72;
+      --red: #ac4242;
+      --yellow: #ac9642;
+
+      --hljs-bg: var(--bg-inset);
+    }
+
+    /* Parchment — light theme for bright environments */
+    :root[data-theme="parchment"] {
+      --bg: #f4f0e8;
+      --bg-surface: #ebe7de;
+      --bg-elevated: #e2ded4;
+      --bg-hover: #d9d5cb;
+      --bg-inset: #f9f6f0;
+      --border: rgba(0,0,0,0.08);
+      --border-bright: rgba(0,0,0,0.13);
+
+      --text: #4a4640;
+      --text-bright: #1e1c18;
+      --text-muted: #7a756c;
+      --text-dim: #a8a298;
+
+      --amber: #9e7428;
+      --amber-dim: rgba(158,116,40,0.08);
+      --amber-bright: #b58830;
+
+      --teal: #2d8475;
+      --teal-dim: rgba(45,132,117,0.08);
+      --teal-bright: #3a9e8f;
+
+      --green: #2d844a;
+      --red: #9e3a3a;
+      --yellow: #8a7a2e;
+
+      --hljs-bg: var(--bg-inset);
     }
 
     * { margin: 0; padding: 0; box-sizing: border-box; }
@@ -64,6 +127,7 @@
       font-size: 15px;
       -webkit-font-smoothing: antialiased;
       -moz-osx-font-smoothing: grayscale;
+      transition: background-color 300ms ease, color 300ms ease;
     }
 
     /* Faint noise texture — looking through facility glass */
@@ -76,7 +140,70 @@
       mix-blend-mode: overlay;
     }
 
+    /* Parchment: invert noise blend for light backgrounds */
+    :root[data-theme="parchment"] body::after { mix-blend-mode: multiply; opacity: 0.018; }
+
+    /* Override highlight.js background for all themes */
+    .hljs { background: var(--bg-inset) !important; }
+
+    /* Smooth theme transitions on key surfaces */
+    #tab-bar, #sidebar, .session-header, #status-bar, .sidebar-panel,
+    #split-annotations, .annotation-card, .sys-stat-card, .sidecar,
+    .modal-panel, #annotation-popup {
+      transition: background-color 300ms ease, border-color 300ms ease, color 300ms ease;
+    }
+
+    /* Parchment: scrollbar adjustments */
+    :root[data-theme="parchment"] ::-webkit-scrollbar-thumb { background: rgba(0,0,0,0.08); }
+    :root[data-theme="parchment"] ::-webkit-scrollbar-thumb:hover { background: rgba(0,0,0,0.14); }
+    :root[data-theme="parchment"] ::selection { background: rgba(45,132,117,0.18); }
+
     #app { display: flex; height: 100vh; flex-direction: column; }
+
+    /* === Layout Modes === */
+    /* Focus mode: sidebar hidden, content full width */
+    body.layout-focus #sidebar { display: none; }
+    body.layout-focus #status-bar { right: 0; }
+
+    /* Focus mode: floating restore button */
+    #sidebar-restore {
+      position: fixed; right: 12px; top: 50%;
+      transform: translateY(-50%); z-index: 800;
+      width: 28px; height: 28px; border-radius: var(--r);
+      background: var(--bg-surface); border: 1px solid var(--border);
+      color: var(--text-dim); cursor: pointer;
+      font-size: 11px; font-family: var(--font-mono);
+      transition: color 150ms var(--ease), border-color 150ms var(--ease),
+                  background 150ms var(--ease), opacity 300ms var(--ease);
+      opacity: 0; pointer-events: none;
+      display: flex; align-items: center; justify-content: center;
+    }
+    #sidebar-restore:hover { color: var(--teal); border-color: var(--teal); background: var(--bg-elevated); }
+    body.layout-focus #sidebar-restore { opacity: 0.6; pointer-events: auto; }
+    body.layout-focus #sidebar-restore:hover { opacity: 1; }
+
+    /* Split mode: three-column layout */
+    body.layout-split #sidebar { order: -1; border-left: none; border-right: 1px solid var(--border); }
+    body.layout-split #content { flex: 1; }
+    body.layout-split #split-annotations {
+      display: flex; flex-direction: column;
+      width: 260px; flex-shrink: 0;
+      background: var(--bg-surface); border-left: 1px solid var(--border);
+      overflow: hidden;
+    }
+    body.layout-split #split-annotations .split-header {
+      padding: 10px 12px; font-size: 11px; font-weight: 600;
+      color: var(--teal); text-transform: uppercase; letter-spacing: 0.08em;
+      font-family: var(--font-mono); border-bottom: 1px solid var(--border);
+      flex-shrink: 0;
+    }
+    body.layout-split #split-annotations .split-body {
+      flex: 1; overflow-y: auto; padding: 8px;
+    }
+    body.layout-split #status-bar { right: 260px; }
+
+    /* Hide split panel when not in split mode */
+    body:not(.layout-split) #split-annotations { display: none; }
 
     /* === Tab Bar === */
     #tab-bar {
@@ -467,15 +594,48 @@
     /* === Status Bar === */
     #status-bar {
       position: fixed; bottom: 0; left: 0; right: 280px;
+      height: 24px;
       background: var(--bg-surface); border-top: 1px solid var(--border);
-      padding: 3px 16px; font-size: 10px; color: var(--text-dim);
-      display: flex; gap: 12px; align-items: center;
+      padding: 0 12px; font-size: 11px; color: var(--text-dim);
+      display: flex; align-items: center;
       font-family: var(--font-mono); font-weight: 500;
-      letter-spacing: 0.03em;
+      letter-spacing: 0.03em; z-index: 100;
+      transition: right 150ms var(--ease);
     }
-    .status-dot { width: 4px; height: 4px; border-radius: 50%; display: inline-block; }
-    .status-dot.connected { background: var(--teal); opacity: 0.6; }
-    .status-dot.disconnected { background: var(--red); opacity: 0.5; }
+    .status-left {
+      display: flex; align-items: center; gap: 8px; flex-shrink: 0;
+    }
+    .status-center {
+      flex: 1; text-align: center; overflow: hidden;
+      white-space: nowrap; text-overflow: ellipsis;
+      color: var(--text-muted); font-size: 10px;
+    }
+    .status-right {
+      display: flex; align-items: center; gap: 2px; flex-shrink: 0;
+    }
+    .status-dot { width: 5px; height: 5px; border-radius: 50%; display: inline-block; flex-shrink: 0; }
+    .status-dot.connected { background: var(--green); }
+    .status-dot.disconnected { background: var(--red); opacity: 0.6; }
+    .status-port {
+      font-size: 10px; color: var(--text-dim); letter-spacing: 0.02em;
+    }
+    .status-sep {
+      width: 1px; height: 10px; background: var(--border); margin: 0 4px;
+    }
+    .status-toggle {
+      background: none; border: 1px solid transparent; border-radius: 3px;
+      color: var(--text-dim); cursor: pointer; padding: 1px 5px;
+      font-size: 10px; font-family: var(--font-mono); font-weight: 500;
+      transition: color 150ms var(--ease), border-color 150ms var(--ease),
+                  background 150ms var(--ease);
+      line-height: 1; letter-spacing: 0.01em; white-space: nowrap;
+    }
+    .status-toggle:hover {
+      color: var(--text-muted); border-color: var(--border);
+      background: var(--bg-hover);
+    }
+    .status-toggle.active { color: var(--teal); }
+    .status-toggle svg { vertical-align: middle; }
 
     /* === Empty State === */
     #empty-state {
@@ -952,8 +1112,17 @@
         </div>
       </div>
     </div>
+
+    <!-- Split mode: dedicated annotations column -->
+    <div id="split-annotations">
+      <div class="split-header">annotations <span class="badge" id="split-annotation-count">0</span></div>
+      <div class="split-body" id="split-annotation-list"></div>
+    </div>
   </div>
 </div>
+
+<!-- Focus mode: sidebar restore button -->
+<button id="sidebar-restore" title="Restore sidebar" onclick="cycleLayout()">&#9654;</button>
 
 <div id="annotation-popup">
   <div id="popup-preview"></div>
@@ -975,9 +1144,22 @@
 </div>
 
 <div id="status-bar">
-  <span><span class="status-dot disconnected" id="status-dot"></span></span>
-  <span id="status-text">connecting</span>
-  <span id="status-sessions">0 sessions</span>
+  <div class="status-left">
+    <span class="status-dot disconnected" id="status-dot"></span>
+    <span id="status-text">connecting</span>
+    <span class="status-sep"></span>
+    <span class="status-port" id="status-port"></span>
+  </div>
+  <div class="status-center" id="status-session-label">--</div>
+  <div class="status-right">
+    <button class="status-toggle" id="layout-toggle" onclick="cycleLayout()" title="Layout mode">
+      <svg width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="1.2">
+        <rect x="1" y="1" width="10" height="10" rx="1"/>
+        <line x1="8" y1="1" x2="8" y2="11"/>
+      </svg>
+    </button>
+    <button class="status-toggle" id="theme-toggle" onclick="cycleTheme()" title="Theme"></button>
+  </div>
 </div>
 
 <script>
@@ -1004,6 +1186,126 @@
   const PORT = window.location.port || 3377;
   const WS_URL = `ws://${window.location.hostname}:${PORT}/ws`;
   const API = `http://${window.location.hostname}:${PORT}`;
+
+  // === Theme & Layout ===
+  const THEMES = ['void', 'slate', 'parchment'];
+  const LAYOUTS = ['default', 'focus', 'split'];
+  let currentTheme = localStorage.getItem('foldspace-theme') || 'void';
+  let currentLayout = localStorage.getItem('foldspace-layout') || 'default';
+
+  function applyTheme(theme) {
+    currentTheme = theme;
+    document.documentElement.setAttribute('data-theme', theme);
+    localStorage.setItem('foldspace-theme', theme);
+    const btn = $('theme-toggle');
+    if (btn) btn.textContent = theme;
+    // Reinit mermaid theme for parchment vs dark
+    const isDark = theme !== 'parchment';
+    mermaid.initialize({
+      startOnLoad: false,
+      theme: isDark ? 'dark' : 'default',
+      themeVariables: isDark ? {
+        darkMode: true,
+        background: getComputedStyle(document.documentElement).getPropertyValue('--bg-inset').trim() || '#04050a',
+        primaryColor: getComputedStyle(document.documentElement).getPropertyValue('--bg-elevated').trim() || '#0f1219',
+        primaryTextColor: getComputedStyle(document.documentElement).getPropertyValue('--text-bright').trim() || '#cdd3de',
+        primaryBorderColor: getComputedStyle(document.documentElement).getPropertyValue('--border-bright').trim() || 'rgba(255,255,255,0.10)',
+        lineColor: getComputedStyle(document.documentElement).getPropertyValue('--teal').trim() || '#3a9e8f',
+        secondaryColor: getComputedStyle(document.documentElement).getPropertyValue('--bg-surface').trim() || '#0a0c14',
+        tertiaryColor: getComputedStyle(document.documentElement).getPropertyValue('--bg-elevated').trim() || '#0f1219',
+        fontFamily: "'IBM Plex Mono', 'SF Mono', monospace",
+        fontSize: '13px',
+      } : {
+        darkMode: false,
+        background: '#f9f6f0',
+        primaryColor: '#e2ded4',
+        primaryTextColor: '#1e1c18',
+        primaryBorderColor: 'rgba(0,0,0,0.13)',
+        lineColor: '#2d8475',
+        secondaryColor: '#ebe7de',
+        tertiaryColor: '#e2ded4',
+        fontFamily: "'IBM Plex Mono', 'SF Mono', monospace",
+        fontSize: '13px',
+      },
+    });
+  }
+
+  function cycleTheme() {
+    const idx = THEMES.indexOf(currentTheme);
+    applyTheme(THEMES[(idx + 1) % THEMES.length]);
+  }
+
+  function applyLayout(layout) {
+    currentLayout = layout;
+    // Remove all layout classes
+    document.body.classList.remove('layout-focus', 'layout-split');
+    if (layout !== 'default') document.body.classList.add('layout-' + layout);
+    localStorage.setItem('foldspace-layout', layout);
+    updateLayoutIcon();
+    updateStatusBarRight();
+    // Sync split annotations panel
+    if (layout === 'split') syncSplitAnnotations();
+  }
+
+  function cycleLayout() {
+    const idx = LAYOUTS.indexOf(currentLayout);
+    applyLayout(LAYOUTS[(idx + 1) % LAYOUTS.length]);
+  }
+
+  function updateLayoutIcon() {
+    const btn = $('layout-toggle');
+    if (!btn) return;
+    const icons = {
+      'default':
+        '<svg width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="1.2">'
+        + '<rect x="1" y="1" width="10" height="10" rx="1"/>'
+        + '<line x1="8" y1="1" x2="8" y2="11"/></svg>',
+      'focus':
+        '<svg width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="1.2">'
+        + '<rect x="1" y="1" width="10" height="10" rx="1"/></svg>',
+      'split':
+        '<svg width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="1.2">'
+        + '<rect x="1" y="1" width="10" height="10" rx="1"/>'
+        + '<line x1="4" y1="1" x2="4" y2="11"/>'
+        + '<line x1="8" y1="1" x2="8" y2="11"/></svg>',
+    };
+    btn.innerHTML = icons[currentLayout] || icons['default'];
+    btn.title = 'Layout: ' + currentLayout;
+  }
+
+  function updateStatusBarRight() {
+    // Adjust status bar right offset based on layout
+    const bar = $('status-bar');
+    if (!bar) return;
+    if (currentLayout === 'focus') bar.style.right = '0';
+    else if (currentLayout === 'split') bar.style.right = '260px';
+    else bar.style.right = '280px';
+  }
+
+  function syncSplitAnnotations() {
+    const anns = allAnnotations.get(activeSessionId) || [];
+    const countEl = $('split-annotation-count');
+    const listEl = $('split-annotation-list');
+    if (countEl) countEl.textContent = anns.length;
+    if (!listEl) return;
+    if (!anns.length) {
+      listEl.innerHTML = '<div class="sidebar-hint">Select text to annotate.</div>';
+      return;
+    }
+    listEl.innerHTML = anns.map(a => `
+      <div class="annotation-card" data-id="${a.id}">
+        <div class="sel">${esc(a.selectedText)}</div>
+        <div class="cmt">${esc(a.comment)}</div>
+        <div class="meta"><span>${new Date(a.timestamp).toLocaleTimeString()}</span><button class="del-btn" onclick="delAnnotation('${a.id}')">remove</button></div>
+      </div>`).join('');
+  }
+
+  function updateStatusSessionLabel() {
+    const el = $('status-session-label');
+    if (!el) return;
+    const m = sessions.get(activeSessionId);
+    el.textContent = m ? sessionLabel(m) : '--';
+  }
 
   marked.setOptions({
     highlight: (code, lang) => {
@@ -1316,7 +1618,7 @@
   // === WebSocket ===
   function connectWS() {
     ws = new WebSocket(WS_URL);
-    ws.onopen = () => { $('status-dot').className = 'status-dot connected'; $('status-text').textContent = 'connected'; };
+    ws.onopen = () => { $('status-dot').className = 'status-dot connected'; $('status-text').textContent = 'connected'; updateStatusSessionLabel(); };
     ws.onclose = () => { $('status-dot').className = 'status-dot disconnected'; $('status-text').textContent = 'reconnecting'; setTimeout(connectWS, 2000); };
     ws.onerror = () => ws.close();
     ws.onmessage = (e) => {
@@ -1354,6 +1656,7 @@
     // Apply stored view mode
     setViewMode(viewMode);
     updateStatus();
+    updateStatusSessionLabel();
     loadConfig();
   }
 
@@ -1898,8 +2201,9 @@
     if (viewMode === 'session') {
       renderSessionHeader(); renderAllResponses();
     }
-    // Stream view doesn't change on session switch — it shows everything
     renderAnnotations();
+    updateStatusSessionLabel();
+    if (currentLayout === 'split') syncSplitAnnotations();
   }
 
   // === Session Header ===
@@ -2009,14 +2313,15 @@
     $('annotation-count').textContent = anns.length;
     if (!anns.length) {
       list.innerHTML = '<div class="sidebar-hint">Select text in a response to annotate it.<br>Annotations inject as context on your next prompt.</div>';
-      return;
+    } else {
+      list.innerHTML = anns.map(a => `
+        <div class="annotation-card" data-id="${a.id}">
+          <div class="sel">${esc(a.selectedText)}</div>
+          <div class="cmt">${esc(a.comment)}</div>
+          <div class="meta"><span>${new Date(a.timestamp).toLocaleTimeString()}</span><button class="del-btn" onclick="delAnnotation('${a.id}')">remove</button></div>
+        </div>`).join('');
     }
-    list.innerHTML = anns.map(a => `
-      <div class="annotation-card" data-id="${a.id}">
-        <div class="sel">${esc(a.selectedText)}</div>
-        <div class="cmt">${esc(a.comment)}</div>
-        <div class="meta"><span>${new Date(a.timestamp).toLocaleTimeString()}</span><button class="del-btn" onclick="delAnnotation('${a.id}')">remove</button></div>
-      </div>`).join('');
+    if (currentLayout === 'split') syncSplitAnnotations();
   }
 
   async function delAnnotation(id) {
@@ -2045,7 +2350,8 @@
     const rect = sel.getRangeAt(0).getBoundingClientRect();
     const popup = $('annotation-popup');
     let left = rect.left, top = rect.bottom + 8;
-    if (left + 300 > window.innerWidth - 280) left = window.innerWidth - 600;
+    const sidebarW = currentLayout === 'focus' ? 0 : currentLayout === 'split' ? 540 : 280;
+    if (left + 300 > window.innerWidth - sidebarW) left = window.innerWidth - sidebarW - 320;
     if (top + 160 > window.innerHeight) top = rect.top - 160;
     popup.style.left = Math.max(8, left) + 'px'; popup.style.top = top + 'px';
     $('popup-preview').textContent = txt.length > 80 ? txt.slice(0,80)+'...' : txt;
@@ -2128,7 +2434,7 @@
   function $(id) { return document.getElementById(id); }
   function esc(t) { const d = document.createElement('div'); d.textContent = t; return d.innerHTML; }
   function scrollBottom() { const a = $('responses-area'); a.scrollTop = a.scrollHeight; }
-  function updateStatus() { $('status-sessions').textContent = `${sessions.size} session${sessions.size!==1?'s':''}`; }
+  function updateStatus() { updateStatusSessionLabel(); }
   function formatTokens(n) { if (n >= 1e6) return (n/1e6).toFixed(1)+'M'; if (n >= 1e3) return (n/1e3).toFixed(1)+'K'; return String(n); }
   function formatNum(n) { if (n >= 1e6) return (n/1e6).toFixed(1)+'M'; if (n >= 1e3) return (n/1e3).toFixed(1)+'K'; return String(n); }
 
@@ -2140,6 +2446,11 @@
   document.querySelectorAll('.vmt-option').forEach(btn => {
     btn.classList.toggle('active', btn.dataset.mode === viewMode);
   });
+
+  // Initialize theme, layout, and status bar
+  applyTheme(currentTheme);
+  applyLayout(currentLayout);
+  $('status-port').textContent = ':' + PORT;
 
   connectWS();
 </script>
