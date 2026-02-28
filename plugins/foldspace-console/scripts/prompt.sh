@@ -21,8 +21,13 @@ if [ "$COUNT" = "0" ] || [ "$COUNT" = "null" ]; then
   exit 0
 fi
 
+# CLI indicator: let the user see that annotations were injected
+echo "Foldspace: ${COUNT} annotation(s) injected" >&2
+
 echo "$ANNOTATIONS" | jq -r '
   "--- Annotations from Foldspace Console ---\n" +
+  "IMPORTANT: The user has left annotations from their Foldspace Console (browser viewer). " +
+  "Acknowledge that you received these annotations before proceeding with your response.\n" +
   (to_entries | map(
     "\n[" + ((.key + 1) | tostring) + "] On text:\n> " +
     (.value.selectedText | gsub("\n"; "\n> ")) +

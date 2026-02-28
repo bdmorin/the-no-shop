@@ -51,6 +51,82 @@ Four hooks. One daemon. One browser tab. That's the whole machine.
 
 ---
 
+### 🔄 The Feedback Loop: How Annotations Become Context
+
+This is the core trick — the part where passive observation becomes active navigation.
+
+When you select text in the Foldspace browser SPA and add an annotation, it gets stored in the daemon's in-memory annotation queue (keyed by session ID). Nothing happens yet. The annotations just... wait. Patient as a Face Dancer in a crowd.
+
+Then you type your next prompt in the terminal.
+
+#### The Injection Mechanism
+
+Claude Code fires the `UserPromptSubmit` hook **before** the prompt reaches the model. Here's what `prompt.sh` does:
+
+1. **Reads the hook event** from stdin (Claude Code passes `session_id` and other metadata as JSON)
+2. **Health-checks the daemon** — if the daemon isn't running, the hook exits silently. No crash, no noise.
+3. **Fetches pending annotations** via `GET /api/annotations?session={SESSION_ID}`
+4. **If annotations exist**, formats them as plain text to stdout
+5. **Deletes the annotations** from the daemon via `DELETE /api/annotations?session={SESSION_ID}` — they are consumed on injection
+
+Claude Code's hook system takes whatever the `UserPromptSubmit` hook writes to stdout and **prepends it as additional context to the user's prompt**. The model sees the annotations alongside (and before) whatever you actually typed.
+
+#### What the Model Sees
+
+The injected context looks like this:
+
+```
+--- Annotations from Foldspace Console ---
+IMPORTANT: The user has left annotations from their Foldspace Console (browser viewer). Acknowledge that you received these annotations before proceeding with your response.
+
+[1] On text:
+> The selected text from Claude's response,
+> with each line blockquoted
+
+Comment: Your annotation comment here
+
+[2] On text:
+> Another selection across
+> multiple lines
+
+Comment: And your thoughts on this one
+
+--- End annotations ---
+```
+
+Multiple annotations are numbered sequentially. The original selected text is blockquoted with `>` prefixes. Each annotation carries the exact text you highlighted and the comment you wrote.
+
+#### Visibility
+
+Two safeguards ensure the injection isn't a ghost operation:
+
+1. **CLI indicator** — When annotations are injected, you'll see `Foldspace: 3 annotation(s) injected` in your terminal (via stderr). This doesn't interfere with the hook's stdout context — it's a side-channel heads-up.
+2. **LLM acknowledgment** — The injected context includes an instruction telling the model to acknowledge the annotations before proceeding. The model should surface that it received your Foldspace annotations at the start of its response.
+
+One thing to be aware of: if you annotated something in the browser hours ago and forgot about it, those annotations will inject the next time you submit a prompt in that session. The annotations queue is per-session and persists in daemon memory until consumed or the daemon restarts.
+
+#### Lifecycle Summary
+
+```
+Browser SPA                    Daemon (in-memory)              Claude Code Terminal
+─────────────────────────────────────────────────────────────────────────────────────
+Select text + comment  ──▶  POST /api/annotate
+                            Annotation queued ──┐
+                                                │
+                            (annotations wait)  │
+                                                │
+User types prompt  ─────────────────────────────┼────────▶  UserPromptSubmit fires
+                            GET /api/annotations◀────────── prompt.sh fetches queue
+                            Return annotations  ────────▶  stdout = formatted text
+                            DELETE /api/annotations ◀────── prompt.sh clears queue
+                                                            Context prepended to prompt
+                                                            Model sees annotations + prompt
+```
+
+Annotations are **fire-once**. After injection, they're deleted from the daemon. If you want to re-annotate the same text, you annotate it again in the browser. The queue is always clean for the next prompt.
+
+---
+
 ## 📦 Installation
 
 ### Step 1: Add the marketplace
