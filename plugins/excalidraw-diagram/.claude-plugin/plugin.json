@@ -1,0 +1,19 @@
+{
+  "name": "excalidraw-diagram",
+  "description": "Create Excalidraw diagram JSON files that make visual arguments. Generates .excalidraw JSON with a design-first methodology, then renders to PNG via Playwright for visual validation.",
+  "version": "1.0.0",
+  "author": {
+    "name": "Brian Morin"
+  },
+  "homepage": "https://github.com/bdmorin/the-no-shop",
+  "repository": "https://github.com/bdmorin/the-no-shop",
+  "license": "MIT",
+  "keywords": [
+    "excalidraw",
+    "diagram",
+    "visualization",
+    "architecture",
+    "flowchart",
+    "json"
+  ]
+}

@@ -263,6 +263,34 @@
         "fabric-chain",
         "transcript"
       ]
+    },
+    {
+      "name": "excalidraw-diagram",
+      "source": "./plugins/excalidraw-diagram",
+      "description": "Create Excalidraw diagram JSON files that make visual arguments. Design-first methodology with render-validate loop via Playwright.",
+      "version": "1.0.0",
+      "author": {
+        "name": "Brian Morin"
+      },
+      "homepage": "https://github.com/bdmorin/the-no-shop",
+      "repository": "https://github.com/bdmorin/the-no-shop",
+      "license": "MIT",
+      "keywords": [
+        "excalidraw",
+        "diagram",
+        "visualization",
+        "architecture",
+        "flowchart",
+        "json",
+        "playwright"
+      ],
+      "category": "productivity",
+      "tags": [
+        "visualization",
+        "diagram",
+        "excalidraw",
+        "render-validate"
+      ]
     }
   ]
 }
