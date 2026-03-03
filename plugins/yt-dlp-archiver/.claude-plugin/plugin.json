@@ -1,0 +1,19 @@
+{
+  "name": "yt-dlp-archiver",
+  "description": "Archive YouTube videos with yt-dlp: download 480p video, transcript, description, metadata, thumbnail, and chapters. Auto-triggers on YouTube URLs.",
+  "version": "1.0.0",
+  "author": {
+    "name": "Brian Morin"
+  },
+  "homepage": "https://github.com/bdmorin/the-no-shop",
+  "repository": "https://github.com/bdmorin/the-no-shop",
+  "license": "MIT",
+  "keywords": [
+    "youtube",
+    "yt-dlp",
+    "video",
+    "transcript",
+    "archive",
+    "download"
+  ]
+}
