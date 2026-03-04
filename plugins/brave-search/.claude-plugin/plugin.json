@@ -1,0 +1,21 @@
+{
+  "name": "brave-search",
+  "description": "Full-featured Brave Search API skill: web, images, videos, news, suggest, spellcheck, local POIs, rich results, AI summarizer, and LLM context endpoints.",
+  "version": "1.0.0",
+  "author": {
+    "name": "Brian Morin"
+  },
+  "homepage": "https://github.com/bdmorin/the-no-shop",
+  "repository": "https://github.com/bdmorin/the-no-shop",
+  "license": "MIT",
+  "keywords": [
+    "brave",
+    "search",
+    "web-search",
+    "news",
+    "images",
+    "api",
+    "llm-context",
+    "summarizer"
+  ]
+}

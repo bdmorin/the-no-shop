@@ -265,6 +265,37 @@
       ]
     },
     {
+      "name": "brave-search",
+      "source": "./plugins/brave-search",
+      "description": "Full-featured Brave Search API skill: web, news, images, videos, suggest, spellcheck, local POIs, rich results, AI summarizer, LLM context, and Answers (chat completions) endpoints.",
+      "version": "1.0.0",
+      "author": {
+        "name": "Brian Morin"
+      },
+      "homepage": "https://github.com/bdmorin/the-no-shop",
+      "repository": "https://github.com/bdmorin/the-no-shop",
+      "license": "MIT",
+      "keywords": [
+        "brave",
+        "search",
+        "web-search",
+        "news",
+        "images",
+        "llm-context",
+        "summarizer",
+        "rag",
+        "api"
+      ],
+      "category": "search",
+      "tags": [
+        "brave-search",
+        "web-search",
+        "llm-context",
+        "rag",
+        "news"
+      ]
+    },
+    {
       "name": "excalidraw-diagram",
       "source": "./plugins/excalidraw-diagram",
       "description": "Create Excalidraw diagram JSON files that make visual arguments. Design-first methodology with render-validate loop via Playwright.",
