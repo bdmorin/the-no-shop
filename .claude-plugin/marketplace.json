@@ -265,6 +265,37 @@
       ]
     },
     {
+      "name": "kagi",
+      "source": "./plugins/kagi",
+      "description": "Kagi API skill: privacy-first web search, Universal Summarizer (URL/text/PDF/audio/YouTube, 3 engines, 26 languages), FastGPT (LLM Q&A with citations), Web and News Enrichment (non-commercial Teclis/TinyGem indexes), and free Small Web RSS feed.",
+      "version": "1.0.0",
+      "author": {
+        "name": "Brian Morin"
+      },
+      "homepage": "https://github.com/bdmorin/the-no-shop",
+      "repository": "https://github.com/bdmorin/the-no-shop",
+      "license": "MIT",
+      "keywords": [
+        "kagi",
+        "search",
+        "summarizer",
+        "fastgpt",
+        "privacy",
+        "small-web",
+        "enrich",
+        "rag",
+        "api"
+      ],
+      "category": "search",
+      "tags": [
+        "kagi",
+        "privacy-search",
+        "summarizer",
+        "small-web",
+        "enrich"
+      ]
+    },
+    {
       "name": "brave-search",
       "source": "./plugins/brave-search",
       "description": "Full-featured Brave Search API skill: web, news, images, videos, suggest, spellcheck, local POIs, rich results, AI summarizer, LLM context, and Answers (chat completions) endpoints.",
