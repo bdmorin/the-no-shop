@@ -3,6 +3,7 @@ name: brave-search
 description: "Brave Search REST API covering web, news, images, videos, suggest, spellcheck, local POIs, rich results, AI summarizer, LLM context (RAG-optimized grounding with token budget controls), and Answers (OpenAI-compatible chat completions with streaming and citations). Triggers on any request for live web data, current events, recent news, image search, video search, or building search-augmented agent workflows. Requires BRAVE_SEARCH_API_KEY."
 user-invokable: true
 argument-hint: "brave-search latest Iran news, brave-search --images mars surface, brave-search --answers what caused the 2025 spain outage, brave-search --local coffee shops chicago"
+allowed-tools: "Bash(curl *)"
 license: MIT
 metadata:
   version: "1.0.0"

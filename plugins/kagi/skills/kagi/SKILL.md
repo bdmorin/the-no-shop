@@ -3,6 +3,7 @@ name: kagi
 description: "Kagi API covering privacy-first web search, Universal Summarizer (URL/text/PDF/audio/YouTube, 3 engines, 26 languages), FastGPT (LLM Q&A with cited sources), Web and News Enrichment (non-commercial Teclis/TinyGem indexes), and Small Web RSS feed (free). Triggers on any request for web search, document summarization, AI-answered questions, small-web content, or enrichment of search results. Requires KAGI_API_KEY."
 user-invokable: true
 argument-hint: "kagi search rust async, kagi summarize https://example.com/paper.pdf, kagi ask what is ZTNA, kagi enrich web privacy tools, kagi smallweb"
+allowed-tools: "Bash(curl *)"
 license: MIT
 metadata:
   version: "1.0.0"
