@@ -1,0 +1,19 @@
+{
+  "name": "lemmy-search",
+  "description": "Search for communities across the Lemmyverse — query any Lemmy instance's public API to discover and explore federated communities.",
+  "version": "1.0.0",
+  "author": {
+    "name": "Brian Morin"
+  },
+  "homepage": "https://github.com/bdmorin/the-no-shop",
+  "repository": "https://github.com/bdmorin/the-no-shop",
+  "license": "MIT",
+  "keywords": [
+    "lemmy",
+    "fediverse",
+    "communities",
+    "search",
+    "reddit-alternative",
+    "activitypub"
+  ]
+}
