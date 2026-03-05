@@ -327,6 +327,34 @@
       ]
     },
     {
+      "name": "lemmy-search",
+      "source": "./plugins/lemmy-search",
+      "description": "Search and map communities across the Lemmy fediverse. Queries top active instances to build a unified community directory with keyword filtering and JSON output. No API key required.",
+      "version": "1.0.0",
+      "author": {
+        "name": "Brian Morin"
+      },
+      "homepage": "https://github.com/bdmorin/the-no-shop",
+      "repository": "https://github.com/bdmorin/the-no-shop",
+      "license": "MIT",
+      "keywords": [
+        "lemmy",
+        "fediverse",
+        "communities",
+        "search",
+        "federation",
+        "reddit-alternative",
+        "directory"
+      ],
+      "category": "search",
+      "tags": [
+        "lemmy",
+        "fediverse",
+        "community-search",
+        "directory"
+      ]
+    },
+    {
       "name": "excalidraw-diagram",
       "source": "./plugins/excalidraw-diagram",
       "description": "Create Excalidraw diagram JSON files that make visual arguments. Design-first methodology with render-validate loop via Playwright.",
