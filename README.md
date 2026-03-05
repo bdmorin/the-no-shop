@@ -127,6 +127,29 @@ Annotations are **fire-once**. After injection, they're deleted from the daemon.
 
 ---
 
+### 🎭 Playwright
+
+**Stagehand + Playwright browser automation for agents. No MCP needed.**
+
+Generate and execute browser scripts with AI-powered extraction (Stagehand) and full Playwright introspection — screenshots, HAR recording, tracing, CDP profiling, flamegraphs. Every generated script is saved as a reviewable artifact.
+
+```bash
+claude plugin install playwright@the-no-shop
+```
+
+Then invoke with `/playwright`:
+
+```
+/playwright scrape https://reuters.com/world for headlines
+/playwright screenshot https://iran.hexxa.dev fullpage
+/playwright profile https://example.com performance metrics
+/playwright har https://example.com/api capture traffic
+```
+
+**Requires:** `ANTHROPIC_API_KEY` (standard, not OAuth), `@browserbasehq/stagehand`, `zod`
+
+---
+
 ## 📦 Installation
 
 ### Step 1: Add the marketplace
