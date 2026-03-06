@@ -385,6 +385,33 @@
         "excalidraw",
         "render-validate"
       ]
+    },
+    {
+      "name": "notion",
+      "source": "./plugins/notion",
+      "description": "Notion API skill for PKM: create/query/update pages, databases, blocks, and search. Covers Projects, Tasks, Notes, Research, and Journal databases. API version 2025-09-03 with data source support.",
+      "version": "1.0.0",
+      "author": {
+        "name": "Brian Morin"
+      },
+      "homepage": "https://github.com/bdmorin/the-no-shop",
+      "repository": "https://github.com/bdmorin/the-no-shop",
+      "license": "MIT",
+      "keywords": [
+        "notion",
+        "pkm",
+        "databases",
+        "pages",
+        "blocks",
+        "search",
+        "api"
+      ],
+      "category": "productivity",
+      "tags": [
+        "notion",
+        "pkm",
+        "knowledge-management"
+      ]
     }
   ]
 }
