@@ -25,3 +25,11 @@ tmp/
 
 # Claude Code worktrees
 .claude/worktrees/
+
+# Python tools
+__pycache__/
+*.pyc
+.venv/
+*.egg-info/
+.pytest_cache/
+uv.lock
