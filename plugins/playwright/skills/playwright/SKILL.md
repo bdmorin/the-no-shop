@@ -1,12 +1,12 @@
 ---
 name: playwright
-description: "Stagehand + Playwright browser automation — scraping, screenshots, HAR recording, tracing, CDP profiling, and AI-powered data extraction via script generation. Triggers on any request for browser automation, web scraping, page screenshots, network capture, performance profiling, or interaction with JS-rendered pages. No MCP needed. Requires ANTHROPIC_API_KEY (standard, not OAuth)."
+description: "Stagehand + Playwright browser automation — Code Mode architecture: write complete scripts, execute in isolation, return structured results. One round-trip, not N tool calls. Handles scraping, screenshots, HAR recording, tracing, CDP profiling, and AI-powered data extraction. No MCP needed. Requires ANTHROPIC_API_KEY (standard, not OAuth)."
 user-invokable: true
 argument-hint: "scrape https://reuters.com for headlines, screenshot https://example.com fullpage, profile https://example.com performance, har https://example.com/api capture traffic, trace https://example.com interaction trace"
 allowed-tools: "Bash(bun *), Bash(bunx *), Bash(npx *), Bash(mkdir *), Write, Read, Glob"
 license: MIT
 metadata:
-  version: "1.0.0"
+  version: "2.0.0"
   author: "Brian Morin"
   homepage: "https://github.com/bdmorin/the-no-shop"
   category: browser-automation
@@ -18,20 +18,37 @@ metadata:
       - zod
 ---
 
-# Playwright Skill
+# Playwright Skill — Code Mode
 
-Browser automation via Stagehand (AI-powered) and Playwright (direct). Generate and execute self-contained scripts. No MCP server required.
+Browser automation via script generation. Write a complete TypeScript script, execute it in one shot, return structured JSON. This is the **Code Mode** pattern: one LLM round-trip, not N MCP tool calls.
+
+## Why Code Mode Over MCP
+
+MCP tool-calling forces N round-trips with bloated accessibility trees for what should be a single script execution. Code Mode (per Cloudflare's architecture) writes one script that chains multiple browser actions, eliminating wasted token processing between steps. The LLM is better at writing TypeScript than choosing between MCP tools — it's seen millions of real-world TypeScript projects in training.
 
 ## Setup
 
 One-time per project:
 
 ```bash
-# Per-project (recommended)
 bun add @browserbasehq/stagehand zod
-# Install Chromium browser
 npx playwright install chromium
 ```
+
+## Decision Table — Pick Your Path
+
+| What you need | Use | Why |
+|---|---|---|
+| **Get article/page text** | **Playwright direct** | Raw `innerText` — no AI interpretation |
+| **Get page content + links** | **Playwright direct** | `evaluate()` returns actual content |
+| Extract structured data (prices, specs, tables) | Stagehand `extract()` | AI maps messy HTML to clean schema |
+| Click/fill on unknown forms | Stagehand `act()` | No selector knowledge needed |
+| Multi-step workflow (login → navigate → extract) | **Single script with chained calls** | One round-trip, not N tool calls |
+| Take screenshots | Playwright direct | No AI needed, faster |
+| Record HAR / traces / CDP profiling | Playwright direct | Built-in, no AI cost |
+| PDF generation | Playwright direct | Built-in capability |
+| Known selector interactions | Playwright direct | Faster, deterministic |
+| Site blocks headless (CF Bot Mgmt, DataDome) | Playwright direct with `headless: false` | Stealth fallback |
 
 ## Execution Model
 
@@ -45,9 +62,11 @@ Follow these steps in order for every automation request:
 6. Append manifest entry to `ai/browser-scripts/manifest.jsonl`
 7. If `BROWSER_ARTIFACT_ENDPOINT` is set, POST the manifest entry
 
-## Script Boilerplate — Stagehand (primary)
+**Chain everything in one script.** Don't write separate scripts for "navigate", "click", "extract". Write ONE script that does the entire workflow. This is the core Code Mode principle: eliminate intermediate LLM processing.
 
-Use this when the page structure is unknown or you need AI-powered extraction/interaction.
+## Boilerplate — Stagehand (AI-powered extraction/interaction)
+
+Use when the page structure is unknown or you need AI-powered extraction/interaction.
 
 ```typescript
 import { Stagehand } from "@browserbasehq/stagehand";
@@ -76,9 +95,9 @@ main().catch((err) => {
 });
 ```
 
-## Script Boilerplate — Playwright Direct (raw content & introspection)
+## Boilerplate — Playwright Direct (raw content & introspection)
 
-Use this for **raw content extraction** (articles, pages, text), screenshots, HAR recording, traces, CDP profiling, PDF generation, and known-selector interactions.
+Use for **raw content extraction** (articles, pages, text), screenshots, HAR recording, traces, CDP profiling, PDF generation, and known-selector interactions.
 
 **IMPORTANT**: For "extract the article" or "get the page content" requests, ALWAYS use Playwright direct — NOT Stagehand. Stagehand's `extract()` interprets content through an AI middleman, which summarizes and paraphrases instead of returning the actual text. You cannot write a Zod schema for content you haven't seen yet.
 
@@ -150,28 +169,35 @@ main().catch((err) => {
 });
 ```
 
-## Decision Table — When to Use What
+## Anti-Bot Fallback
 
-| Scenario | Use | Why |
-|---|---|---|
-| **Get article/page text** | **Playwright direct** | **Raw text via `innerText` — no AI interpretation** |
-| **Get page content + links** | **Playwright direct** | **`evaluate()` returns actual content, not a summary** |
-| Extract structured data (prices, specs, tables) | Stagehand `extract()` | AI maps messy HTML to clean schema |
-| Click/fill on unknown forms | Stagehand `act()` | No selector knowledge needed |
-| Take screenshots | Playwright direct | No AI needed, faster |
-| Record HAR / traces | Playwright direct | Built-in, no AI cost |
-| CDP profiling (flamegraphs, metrics) | Playwright CDP session | Direct Chrome DevTools access |
-| PDF generation | Playwright direct | Built-in capability |
-| Known selector interactions | Playwright direct | Faster, deterministic |
+Headless Chromium is detected by commercial anti-bot services (Cloudflare Bot Mgmt, DataDome, PerimeterX). Detection surface: `navigator.webdriver=true`, `HeadlessChrome/` UA string, missing plugins, CDP side effects.
 
-### When NOT to Use Stagehand extract()
+When a script gets blocked (HTTP 403, CAPTCHA page, empty content on a page you know has content):
 
-Stagehand `extract()` passes page content through an LLM to fill a Zod schema. This means:
-- It **summarizes and paraphrases** — you don't get the actual text
-- You must define a schema **before seeing the content** — impossible for generic "get the article" requests
-- It costs tokens and adds latency for no benefit when you just want raw text
+```typescript
+// Try headless first, fall back to headed if blocked
+let browser = await chromium.launch({ headless: true });
+let page = await browser.newPage();
+await page.goto(url, { waitUntil: "domcontentloaded" });
 
-**Rule of thumb**: If the user says "extract the article" or "get the page content," use Playwright direct. If they say "extract all product prices into a table," use Stagehand.
+const content = await page.evaluate(() => document.body.innerText);
+if (content.length < 100 || content.includes("Just a moment")) {
+  // Likely blocked — retry headed
+  await browser.close();
+  browser = await chromium.launch({ headless: false });
+  page = await browser.newPage();
+  await page.goto(url, { waitUntil: "domcontentloaded" });
+}
+```
+
+For serious anti-bot bypass, use `playwright-extra` with stealth plugin:
+
+```typescript
+import { chromium } from "playwright-extra";
+import stealth from "puppeteer-extra-plugin-stealth";
+chromium.use(stealth());
+```
 
 ## Manifest Format
 
@@ -184,6 +210,7 @@ Each execution appends one line to `ai/browser-scripts/manifest.jsonl`:
 ## Key Gotchas
 
 - **Stagehand extract() is NOT for raw content** — it interprets through AI. For "get the article," use Playwright direct with `page.evaluate(() => article.innerText)`
+- **Chain everything in one script** — don't write separate scripts for each browser action. One script = one round-trip.
 - ANTHROPIC_API_KEY must be standard `sk-ant-api03-...`, NOT an OAuth token (`sk-ant-oat01-...`)
 - Stagehand `extract()` schemas: be explicit about URL format in the instruction — say "full https URL" or Stagehand returns element refs
 - Each script is self-contained: launches browser, does work, closes browser
@@ -193,7 +220,7 @@ Each execution appends one line to `ai/browser-scripts/manifest.jsonl`:
 - Stagehand v3 page access: `stagehand.context.pages()[0]`, NOT `stagehand.page`
 - **Module resolution**: scripts import from `node_modules` relative to the script location. Ensure `@browserbasehq/stagehand`, `zod`, and `playwright` are installed in the project root (run `bun add` there)
 - **`networkidle` timeout**: Ad-heavy sites never reach networkidle. Use `waitUntil: "domcontentloaded"` + manual `setTimeout` delay instead
-- **Cloudflare Turnstile**: Headless Chromium is blocked by CF's bot detection. No workaround in headless mode — use WebFetch for CF-protected sites, or a cloud browser service (Browserbase) for Turnstile-protected pages
+- **Cloudflare Turnstile**: Headless Chromium is blocked by CF's bot detection. Use anti-bot fallback pattern above, or WebFetch for CF-protected sites
 
 ## Reference Links
 
