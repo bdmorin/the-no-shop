@@ -1,7 +1,7 @@
 {
   "name": "playwright",
-  "description": "Stagehand + Playwright browser automation. Script generation for scraping, screenshots, HAR recording, tracing, CDP profiling, and AI-powered extraction. No MCP needed.",
-  "version": "1.0.0",
+  "description": "Stagehand + Playwright browser automation — Code Mode architecture. Write complete scripts, execute in isolation, return structured results. One LLM round-trip, not N MCP tool calls.",
+  "version": "2.0.0",
   "author": {
     "name": "Brian Morin"
   },

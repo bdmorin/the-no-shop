@@ -356,6 +356,120 @@ try {
 
 ---
 
+## Pattern 10: Scraping Cascade (cheap → expensive)
+
+Try lightweight extraction first, fall back to full browser only when needed. Minimizes token cost and latency.
+
+```typescript
+import { chromium } from "playwright";
+
+async function main() {
+  const url = "https://TARGET_URL";
+
+  // Step 1: Try fetch + regex (cheapest — no browser)
+  try {
+    const resp = await fetch(url);
+    const html = await resp.text();
+    // Check for poison pills: paywalls, CAPTCHAs, bot blocks
+    if (
+      html.includes("Just a moment") ||          // Cloudflare
+      html.includes("captcha") ||                 // Generic CAPTCHA
+      html.includes("Please verify") ||           // Bot check
+      html.includes("paywall") ||                 // Paywall
+      html.length < 500                           // Empty/blocked response
+    ) {
+      throw new Error("Poison pill detected — need full browser");
+    }
+    // Extract from static HTML if sufficient
+    const titleMatch = html.match(/<title>(.*?)<\/title>/);
+    const bodyMatch = html.match(/<article[^>]*>([\s\S]*?)<\/article>/);
+    if (bodyMatch) {
+      console.log(JSON.stringify({
+        method: "fetch",
+        title: titleMatch?.[1] || "",
+        content: bodyMatch[1].replace(/<[^>]+>/g, " ").trim(),
+      }));
+      return;
+    }
+  } catch (e) {
+    // Fall through to browser
+  }
+
+  // Step 2: Full browser (expensive — JS rendering, dynamic content)
+  const browser = await chromium.launch({ headless: true });
+  const page = await browser.newPage();
+  await page.goto(url, { waitUntil: "domcontentloaded" });
+  await new Promise((r) => setTimeout(r, 3000));
+
+  const content = await page.evaluate(() => {
+    const el = document.querySelector("article")
+      || document.querySelector("main")
+      || document.body;
+    return el?.innerText || "";
+  });
+
+  console.log(JSON.stringify({ method: "browser", content }));
+  await browser.close();
+}
+
+main().catch((e) => { console.error("FATAL:", e); process.exit(1); });
+```
+
+**When to use**: High-volume scraping where most pages are static HTML. The fetch path costs zero Playwright overhead. Only pages that need JS rendering or are bot-protected escalate to the browser.
+
+---
+
+## Pattern 11: Anti-Bot Fallback (headless → headed)
+
+When headless is blocked, automatically retry with a headed browser. Detects common anti-bot signals.
+
+```typescript
+import { chromium, type Browser, type Page } from "playwright";
+
+async function withFallback(url: string): Promise<{ browser: Browser; page: Page }> {
+  // Try headless first
+  let browser = await chromium.launch({ headless: true });
+  let page = await browser.newPage();
+  await page.goto(url, { waitUntil: "domcontentloaded" });
+  await new Promise((r) => setTimeout(r, 2000));
+
+  const text = await page.evaluate(() => document.body.innerText);
+  const blocked =
+    text.length < 100 ||
+    text.includes("Just a moment") ||
+    text.includes("Verify you are human") ||
+    text.includes("Access denied") ||
+    text.includes("Enable JavaScript");
+
+  if (blocked) {
+    await browser.close();
+    // Retry headed — harder to detect
+    browser = await chromium.launch({ headless: false });
+    page = await browser.newPage();
+    await page.goto(url, { waitUntil: "domcontentloaded" });
+    await new Promise((r) => setTimeout(r, 3000));
+  }
+
+  return { browser, page };
+}
+
+async function main() {
+  const { browser, page } = await withFallback("https://TARGET_URL");
+  const content = await page.evaluate(() => {
+    const el = document.querySelector("article") || document.body;
+    return el?.innerText || "";
+  });
+  console.log(JSON.stringify({ content }));
+  await browser.close();
+}
+
+main().catch((e) => { console.error("FATAL:", e); process.exit(1); });
+```
+
+**When to use**: Scraping sites with anti-bot protection. The headed fallback works against basic detection (navigator.webdriver checks, UA sniffing) but won't bypass enterprise solutions like DataDome or PerimeterX without additional stealth plugins.
+
+---
+
 ## Tips & Tricks
 
 ### Error Handling
