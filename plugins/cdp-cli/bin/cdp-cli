@@ -1,0 +1,196 @@
+#!/usr/bin/env bun
+// cdp-cli — CLI for Chrome DevTools Protocol session riding
+// Connects to any running Chromium browser with --remote-debugging-port
+// No MCP, no extension, no Playwright. Pure CDP over WebSocket.
+
+import puppeteer from "puppeteer-core";
+
+const CDP_PORT = process.env.CDP_PORT || "9222";
+const CDP_URL = `http://localhost:${CDP_PORT}`;
+
+const USAGE = `cdp-cli — ride a running Chromium browser via CDP
+
+Commands:
+  cdp-cli tabs                       List open tabs (title + URL)
+  cdp-cli content <match>            Extract text from tab matching title/URL
+  cdp-cli links <match>              Extract links from matching tab
+  cdp-cli screenshot <match> [path]  Screenshot matching tab (default: ./tmp/cdp-screenshot.png)
+  cdp-cli eval <match> <js>          Run JS in matching tab, return result
+  cdp-cli navigate <match> <url>     Navigate matching tab to URL
+  cdp-cli ensure                     Ensure browser is running with CDP (macOS: relaunches if needed)
+
+Environment:
+  CDP_PORT  Debug port (default: 9222)
+
+The <match> argument finds a tab by substring match on title or URL (case-insensitive).
+Use "first" to match the first real tab, or a number for tab index.`;
+
+async function ensureCDP(): Promise<boolean> {
+  try {
+    const resp = await fetch(`${CDP_URL}/json/version`);
+    if (resp.ok) return true;
+  } catch {}
+  return false;
+}
+
+async function ensureBrowser() {
+  if (await ensureCDP()) {
+    console.error(`CDP already available on port ${CDP_PORT}`);
+    return;
+  }
+  // macOS: find running Chromium browser and relaunch with CDP flag
+  const browsers = [
+    { name: "Brave Browser Beta", app: "Brave Browser Beta" },
+    { name: "Brave Browser", app: "Brave Browser" },
+    { name: "Google Chrome", app: "Google Chrome" },
+    { name: "Microsoft Edge", app: "Microsoft Edge" },
+    { name: "Chromium", app: "Chromium" },
+  ];
+
+  for (const b of browsers) {
+    try {
+      const check = Bun.spawnSync(["pgrep", "-f", b.name]);
+      if (check.exitCode === 0) {
+        console.error(`Found running ${b.name}. Relaunching with --remote-debugging-port=${CDP_PORT}...`);
+        // Quit gracefully
+        Bun.spawnSync(["osascript", "-e", `tell application "${b.app}" to quit`]);
+        await new Promise(r => setTimeout(r, 2000));
+        // Relaunch with CDP
+        Bun.spawnSync(["open", "-a", b.app, "--args", `--remote-debugging-port=${CDP_PORT}`]);
+        // Wait for CDP
+        for (let i = 0; i < 10; i++) {
+          await new Promise(r => setTimeout(r, 1000));
+          if (await ensureCDP()) {
+            console.error(`CDP ready on port ${CDP_PORT}`);
+            return;
+          }
+        }
+        console.error("Timed out waiting for CDP");
+        process.exit(1);
+      }
+    } catch {}
+  }
+  console.error("No running Chromium browser found. Launch one with --remote-debugging-port=9222");
+  process.exit(1);
+}
+
+async function connect() {
+  if (!(await ensureCDP())) {
+    console.error(`No CDP on port ${CDP_PORT}. Run: cdp-cli ensure`);
+    process.exit(1);
+  }
+  return puppeteer.connect({ browserURL: CDP_URL });
+}
+
+async function findTab(browser: Awaited<ReturnType<typeof puppeteer.connect>>, match: string) {
+  const pages = await browser.pages();
+  const real = pages.filter(p => p.url().startsWith("http"));
+
+  if (match === "first") return real[0];
+
+  const idx = parseInt(match);
+  if (!isNaN(idx) && idx >= 0 && idx < real.length) return real[idx];
+
+  const lower = match.toLowerCase();
+  for (const page of real) {
+    const title = await page.title();
+    if (title.toLowerCase().includes(lower) || page.url().toLowerCase().includes(lower)) {
+      return page;
+    }
+  }
+  console.error(`No tab matching "${match}". Open tabs:`);
+  for (const page of real) {
+    console.error(`  ${await page.title()} — ${page.url()}`);
+  }
+  process.exit(1);
+}
+
+// --- Commands ---
+
+async function cmdTabs() {
+  const browser = await connect();
+  const pages = await browser.pages();
+  const tabs = [];
+  for (const page of pages) {
+    if (!page.url().startsWith("http")) continue;
+    tabs.push({ title: await page.title(), url: page.url() });
+  }
+  console.log(JSON.stringify(tabs, null, 2));
+  browser.disconnect();
+}
+
+async function cmdContent(match: string) {
+  const browser = await connect();
+  const page = await findTab(browser, match);
+  if (!page) process.exit(1);
+  const content = await page.evaluate(() => {
+    const el = document.querySelector("article")
+      || document.querySelector("main")
+      || document.querySelector(".post-content")
+      || document.body;
+    return el?.innerText || "";
+  });
+  console.log(content);
+  browser.disconnect();
+}
+
+async function cmdLinks(match: string) {
+  const browser = await connect();
+  const page = await findTab(browser, match);
+  if (!page) process.exit(1);
+  const links = await page.evaluate(() =>
+    Array.from(document.querySelectorAll("a[href]"))
+      .map(a => ({ text: (a as HTMLAnchorElement).innerText.trim(), url: (a as HTMLAnchorElement).href }))
+      .filter(l => l.text && l.url.startsWith("http"))
+  );
+  console.log(JSON.stringify(links, null, 2));
+  browser.disconnect();
+}
+
+async function cmdScreenshot(match: string, path?: string) {
+  const outPath = path || "./tmp/cdp-screenshot.png";
+  const browser = await connect();
+  const page = await findTab(browser, match);
+  if (!page) process.exit(1);
+  await page.screenshot({ path: outPath, fullPage: true });
+  console.log(JSON.stringify({ file: outPath }));
+  browser.disconnect();
+}
+
+async function cmdEval(match: string, js: string) {
+  const browser = await connect();
+  const page = await findTab(browser, match);
+  if (!page) process.exit(1);
+  const result = await page.evaluate(js);
+  console.log(typeof result === "string" ? result : JSON.stringify(result, null, 2));
+  browser.disconnect();
+}
+
+async function cmdNavigate(match: string, url: string) {
+  const browser = await connect();
+  const page = await findTab(browser, match);
+  if (!page) process.exit(1);
+  await page.goto(url, { waitUntil: "domcontentloaded" });
+  console.log(JSON.stringify({ title: await page.title(), url: page.url() }));
+  browser.disconnect();
+}
+
+// --- Main ---
+
+const [cmd, ...args] = process.argv.slice(2);
+
+switch (cmd) {
+  case "tabs":      await cmdTabs(); break;
+  case "content":   await cmdContent(args[0]); break;
+  case "links":     await cmdLinks(args[0]); break;
+  case "screenshot": await cmdScreenshot(args[0], args[1]); break;
+  case "eval":      await cmdEval(args[0], args[1]); break;
+  case "navigate":  await cmdNavigate(args[0], args[1]); break;
+  case "ensure":    await ensureBrowser(); break;
+  case "--help": case "-h": case undefined:
+    console.log(USAGE); break;
+  default:
+    console.error(`Unknown command: ${cmd}\n`);
+    console.log(USAGE);
+    process.exit(1);
+}

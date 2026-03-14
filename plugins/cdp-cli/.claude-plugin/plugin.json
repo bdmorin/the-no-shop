@@ -1,0 +1,21 @@
+{
+  "name": "cdp-cli",
+  "description": "Ride a running Chromium browser via CDP. Access authenticated sessions without credentials. Works with Brave, Chrome, Edge, Arc.",
+  "version": "1.0.0",
+  "author": {
+    "name": "Brian Morin"
+  },
+  "homepage": "https://github.com/bdmorin/the-no-shop",
+  "repository": "https://github.com/bdmorin/the-no-shop",
+  "license": "MIT",
+  "keywords": [
+    "cdp",
+    "chrome-devtools-protocol",
+    "browser",
+    "session",
+    "chromium",
+    "brave",
+    "puppeteer",
+    "automation"
+  ]
+}
