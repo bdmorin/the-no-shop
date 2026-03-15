@@ -412,6 +412,66 @@
         "pkm",
         "knowledge-management"
       ]
+    },
+    {
+      "name": "knowledge-web",
+      "source": "./plugins/knowledge-web",
+      "description": "Create Obsidian investigation vaults from structured research. Transform knowledge graphs into interconnected markdown notes with bidirectional links, confidence scoring, custom callouts, canvas investigation boards, and mobile-first CSS.",
+      "version": "1.0.0",
+      "author": {
+        "name": "Brian Morin"
+      },
+      "homepage": "https://github.com/bdmorin/the-no-shop",
+      "repository": "https://github.com/bdmorin/the-no-shop",
+      "license": "MIT",
+      "keywords": [
+        "knowledge-management",
+        "obsidian",
+        "vault",
+        "investigation",
+        "research",
+        "knowledge-graph",
+        "intelligence",
+        "osint",
+        "backlinks",
+        "wikilinks"
+      ],
+      "category": "productivity",
+      "tags": [
+        "knowledge-management",
+        "obsidian",
+        "research-vault",
+        "graph-visualization",
+        "intelligence"
+      ]
+    },
+    {
+      "name": "retro",
+      "source": "./plugins/retro",
+      "description": "Session retrospective — analyzes the current Claude Code session and produces a structured retrospective with lessons learned, insights, blockers, resolutions, and session origin story. Hybrid of jwynia/context-retrospective analysis framework and onekeyhq/1k-retrospective feedback loop.",
+      "version": "1.0.0",
+      "author": {
+        "name": "Brian Morin"
+      },
+      "homepage": "https://github.com/bdmorin/the-no-shop",
+      "repository": "https://github.com/bdmorin/the-no-shop",
+      "license": "MIT",
+      "keywords": [
+        "retrospective",
+        "session",
+        "learning",
+        "insights",
+        "analysis",
+        "lessons-learned",
+        "blockers"
+      ],
+      "category": "productivity",
+      "tags": [
+        "retrospective",
+        "session-analysis",
+        "lessons-learned",
+        "rule-proposals"
+      ]
     }
   ]
 }

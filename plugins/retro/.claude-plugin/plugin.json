@@ -1,0 +1,10 @@
+{
+  "name": "retro",
+  "description": "Session retrospective — analyzes the current Claude Code session and produces a structured retrospective with lessons learned, insights, blockers, resolutions, and session origin story.",
+  "version": "1.0.0",
+  "author": {"name": "Brian Morin"},
+  "homepage": "https://github.com/bdmorin/the-no-shop",
+  "repository": "https://github.com/bdmorin/the-no-shop",
+  "license": "MIT",
+  "keywords": ["retrospective", "session", "learning", "insights", "analysis"]
+}
