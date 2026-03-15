@@ -145,13 +145,13 @@ Pass `callback_key` to `/res/v1/web/rich?key=<callback_key>` for the full data.
 # Page 1
 curl -s --compressed \
   "https://api.search.brave.com/res/v1/web/search?q=rust+async&count=20&offset=0" \
-  -H "X-Subscription-Token: $BRAVE_SEARCH_API_KEY" \
+  -H "X-Subscription-Token: $(printenv BRAVE_SEARCH_API_KEY)" \
   -H "Accept: application/json" -H "Accept-Encoding: gzip" -H "Cache-Control: no-cache"
 
 # Page 2 (only if more_results_available=true)
 curl -s --compressed \
   "https://api.search.brave.com/res/v1/web/search?q=rust+async&count=20&offset=1" \
-  -H "X-Subscription-Token: $BRAVE_SEARCH_API_KEY" \
+  -H "X-Subscription-Token: $(printenv BRAVE_SEARCH_API_KEY)" \
   -H "Accept: application/json" -H "Accept-Encoding: gzip" -H "Cache-Control: no-cache"
 ```
 
@@ -160,6 +160,6 @@ curl -s --compressed \
 ```bash
 curl -s --compressed \
   "https://api.search.brave.com/res/v1/web/search?q=nachhaltige+energie&country=de&search_lang=de&ui_lang=de-DE" \
-  -H "X-Subscription-Token: $BRAVE_SEARCH_API_KEY" \
+  -H "X-Subscription-Token: $(printenv BRAVE_SEARCH_API_KEY)" \
   -H "Accept: application/json" -H "Accept-Encoding: gzip" -H "Cache-Control: no-cache"
 ```

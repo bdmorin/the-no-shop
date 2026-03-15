@@ -24,7 +24,7 @@ $0.015/query ($15 per 1,000 queries) with web search.
 
 ```bash
 curl -X POST \
-  -H "Authorization: Bot $KAGI_API_KEY" \
+  -H "Authorization: Bot $(printenv KAGI_API_KEY)" \
   -H "Content-Type: application/json" \
   -d '{"query": "What is the difference between ZTNA and VPN?"}' \
   "https://kagi.com/api/v0/fastgpt"

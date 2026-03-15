@@ -44,7 +44,7 @@ Cache-Control: no-cache
 
 Missing `Cache-Control: no-cache` returns 422. Missing token returns 401.
 
-Read the key from environment: `$BRAVE_SEARCH_API_KEY`
+Read the key from environment: `$(printenv BRAVE_SEARCH_API_KEY)`
 
 ## Endpoints — Quick Reference
 
@@ -68,7 +68,7 @@ Read the key from environment: `$BRAVE_SEARCH_API_KEY`
 ```bash
 curl -s --compressed \
   "https://api.search.brave.com/res/v1/web/search?q=YOUR+QUERY&count=10" \
-  -H "X-Subscription-Token: $BRAVE_SEARCH_API_KEY" \
+  -H "X-Subscription-Token: $(printenv BRAVE_SEARCH_API_KEY)" \
   -H "Accept: application/json" \
   -H "Accept-Encoding: gzip" \
   -H "Cache-Control: no-cache"

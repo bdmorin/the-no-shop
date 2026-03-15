@@ -61,7 +61,7 @@ For sensitive documents: set `cache: false` to prevent Kagi retaining the docume
 ### Summarize a URL (GET)
 
 ```bash
-curl -H "Authorization: Bot $KAGI_API_KEY" \
+curl -H "Authorization: Bot $(printenv KAGI_API_KEY)" \
   "https://kagi.com/api/v0/summarize?url=https://arxiv.org/abs/2301.00001&engine=agnes&summary_type=takeaway"
 ```
 
@@ -69,7 +69,7 @@ curl -H "Authorization: Bot $KAGI_API_KEY" \
 
 ```bash
 curl -X POST \
-  -H "Authorization: Bot $KAGI_API_KEY" \
+  -H "Authorization: Bot $(printenv KAGI_API_KEY)" \
   -H "Content-Type: application/json" \
   -d '{
     "text": "Full text content here...",
@@ -83,14 +83,14 @@ curl -X POST \
 ### Summarize a YouTube video
 
 ```bash
-curl -H "Authorization: Bot $KAGI_API_KEY" \
+curl -H "Authorization: Bot $(printenv KAGI_API_KEY)" \
   "https://kagi.com/api/v0/summarize?url=https://www.youtube.com/watch?v=VIDEO_ID&engine=cecil"
 ```
 
 ### Translate summary to another language
 
 ```bash
-curl -H "Authorization: Bot $KAGI_API_KEY" \
+curl -H "Authorization: Bot $(printenv KAGI_API_KEY)" \
   "https://kagi.com/api/v0/summarize?url=https://example.de/article&target_language=EN"
 ```
 

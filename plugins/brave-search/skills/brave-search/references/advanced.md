@@ -11,7 +11,7 @@ Generates an AI-synthesized answer from web results. **Summarizer calls are free
 ```bash
 curl -s --compressed \
   "https://api.search.brave.com/res/v1/web/search?q=how+does+rust+ownership+work&summary=1" \
-  -H "X-Subscription-Token: $BRAVE_SEARCH_API_KEY" \
+  -H "X-Subscription-Token: $(printenv BRAVE_SEARCH_API_KEY)" \
   -H "Accept: application/json" -H "Accept-Encoding: gzip" -H "Cache-Control: no-cache"
 ```
 
@@ -134,7 +134,7 @@ For agent use, tune `maximum_number_of_tokens` to fit your context window budget
 ```bash
 curl -s --compressed \
   "https://api.search.brave.com/res/v1/llm/context?q=latest+rust+release&count=5&maximum_number_of_tokens=4096&context_threshold_mode=strict" \
-  -H "X-Subscription-Token: $BRAVE_SEARCH_API_KEY" \
+  -H "X-Subscription-Token: $(printenv BRAVE_SEARCH_API_KEY)" \
   -H "Accept: application/json" -H "Accept-Encoding: gzip" -H "Cache-Control: no-cache"
 ```
 
@@ -216,7 +216,7 @@ Local search finds businesses and POIs. Requires Search plan (not free tier). PO
 ```bash
 curl -s --compressed \
   "https://api.search.brave.com/res/v1/web/search?q=coffee+shops+near+chicago" \
-  -H "X-Subscription-Token: $BRAVE_SEARCH_API_KEY" \
+  -H "X-Subscription-Token: $(printenv BRAVE_SEARCH_API_KEY)" \
   -H "Accept: application/json" -H "Accept-Encoding: gzip" -H "Cache-Control: no-cache"
 ```
 
@@ -242,7 +242,7 @@ x-loc-long: -87.6298
 ```bash
 curl -s --compressed \
   "https://api.search.brave.com/res/v1/local/pois?ids=ID1&ids=ID2&units=imperial" \
-  -H "X-Subscription-Token: $BRAVE_SEARCH_API_KEY" \
+  -H "X-Subscription-Token: $(printenv BRAVE_SEARCH_API_KEY)" \
   -H "Accept: application/json" -H "Accept-Encoding: gzip" -H "Cache-Control: no-cache"
 ```
 
@@ -269,7 +269,7 @@ Rich results provide real-time structured data for weather, stocks, sports, etc.
 ```bash
 curl -s --compressed \
   "https://api.search.brave.com/res/v1/web/search?q=AAPL+stock+price&enable_rich_callback=1" \
-  -H "X-Subscription-Token: $BRAVE_SEARCH_API_KEY" \
+  -H "X-Subscription-Token: $(printenv BRAVE_SEARCH_API_KEY)" \
   -H "Accept: application/json" -H "Accept-Encoding: gzip" -H "Cache-Control: no-cache"
 ```
 
@@ -296,7 +296,7 @@ If `rich` is absent, the query doesn't match a rich vertical.
 ```bash
 curl -s --compressed \
   "https://api.search.brave.com/res/v1/web/rich?key=opaque-key..." \
-  -H "X-Subscription-Token: $BRAVE_SEARCH_API_KEY" \
+  -H "X-Subscription-Token: $(printenv BRAVE_SEARCH_API_KEY)" \
   -H "Accept: application/json" -H "Accept-Encoding: gzip" -H "Cache-Control: no-cache"
 ```
 
@@ -320,7 +320,7 @@ Goggles let you boost, demote, or filter results by domain. Apply to web and new
 # Use a public Goggle (by URL)
 curl -s --compressed \
   "https://api.search.brave.com/res/v1/web/search?q=javascript+frameworks&goggles_id=https://raw.githubusercontent.com/nicohvi/techmeme-goggles/main/tech-news.goggle" \
-  -H "X-Subscription-Token: $BRAVE_SEARCH_API_KEY" \
+  -H "X-Subscription-Token: $(printenv BRAVE_SEARCH_API_KEY)" \
   -H "Accept: application/json" -H "Accept-Encoding: gzip" -H "Cache-Control: no-cache"
 ```
 

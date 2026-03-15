@@ -87,7 +87,7 @@ Every response follows this structure:
 ## Basic Search
 
 ```bash
-curl -H "Authorization: Bot $KAGI_API_KEY" \
+curl -H "Authorization: Bot $(printenv KAGI_API_KEY)" \
   "https://kagi.com/api/v0/search?q=your+query&limit=10"
 ```
 
@@ -99,11 +99,11 @@ Response `data` is an array of search objects identified by `t` field:
 
 ```bash
 # Summarize a URL
-curl -H "Authorization: Bot $KAGI_API_KEY" \
+curl -H "Authorization: Bot $(printenv KAGI_API_KEY)" \
   "https://kagi.com/api/v0/summarize?url=https://example.com/paper.pdf"
 
 # Summarize text (use POST to avoid URL length limits)
-curl -X POST -H "Authorization: Bot $KAGI_API_KEY" \
+curl -X POST -H "Authorization: Bot $(printenv KAGI_API_KEY)" \
   -H "Content-Type: application/json" \
   -d '{"text": "Your long text here...", "engine": "agnes"}' \
   "https://kagi.com/api/v0/summarize"
@@ -112,7 +112,7 @@ curl -X POST -H "Authorization: Bot $KAGI_API_KEY" \
 ## Basic FastGPT
 
 ```bash
-curl -X POST -H "Authorization: Bot $KAGI_API_KEY" \
+curl -X POST -H "Authorization: Bot $(printenv KAGI_API_KEY)" \
   -H "Content-Type: application/json" \
   -d '{"query": "What is ZTNA?"}' \
   "https://kagi.com/api/v0/fastgpt"

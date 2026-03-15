@@ -16,7 +16,7 @@
 ### Request Example
 
 ```bash
-curl -H "Authorization: Bot $KAGI_API_KEY" \
+curl -H "Authorization: Bot $(printenv KAGI_API_KEY)" \
   "https://kagi.com/api/v0/search?q=federated+identity+protocols&limit=10"
 ```
 
@@ -85,7 +85,7 @@ Returns results from Kagi's **Teclis** index — non-commercial websites, person
 ### Request Example
 
 ```bash
-curl -H "Authorization: Bot $KAGI_API_KEY" \
+curl -H "Authorization: Bot $(printenv KAGI_API_KEY)" \
   "https://kagi.com/api/v0/enrich/web?q=personal+knowledge+management"
 ```
 
@@ -131,7 +131,7 @@ Returns results from Kagi's **TinyGem** index — non-commercial news sources, i
 ### Request Example
 
 ```bash
-curl -H "Authorization: Bot $KAGI_API_KEY" \
+curl -H "Authorization: Bot $(printenv KAGI_API_KEY)" \
   "https://kagi.com/api/v0/enrich/news?q=open+source+AI+tools"
 ```
 
