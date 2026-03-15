@@ -6,7 +6,7 @@ argument-hint: "kagi search rust async, kagi summarize https://example.com/paper
 allowed-tools: "Bash(curl *)"
 license: MIT
 metadata:
-  version: "1.0.0"
+  version: "1.0.1"
   author: "Brian Morin"
   homepage: "https://github.com/bdmorin/the-no-shop"
   category: search

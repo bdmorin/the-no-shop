@@ -6,7 +6,7 @@ argument-hint: "brave-search latest Iran news, brave-search --images mars surfac
 allowed-tools: "Bash(curl *)"
 license: MIT
 metadata:
-  version: "1.0.0"
+  version: "1.0.1"
   author: "Brian Morin"
   homepage: "https://github.com/bdmorin/the-no-shop"
   category: search
