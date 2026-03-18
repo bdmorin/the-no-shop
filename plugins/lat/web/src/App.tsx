@@ -3,6 +3,7 @@ import { useWebSocket } from "./hooks/useWebSocket";
 import { useAnnotations } from "./hooks/useAnnotations";
 import { SessionList } from "./components/SessionList";
 import { ResponseFeed } from "./components/ResponseFeed";
+import { AnnotationBar } from "./components/AnnotationBar";
 import type { ConnectionStatus } from "./hooks/useWebSocket";
 
 function StatusDot({ status }: { status: ConnectionStatus }) {
@@ -33,11 +34,8 @@ function StatusDot({ status }: { status: ConnectionStatus }) {
 
 function App() {
   const { sessions, responses, connectionStatus, onAnnotationEvent } = useWebSocket();
-  const { pendingAnnotations, addAnnotation, removeAnnotation } = useAnnotations(onAnnotationEvent);
+  const { pendingAnnotations, submittedAnnotations, addAnnotation, removeAnnotation } = useAnnotations(onAnnotationEvent);
   const [activeSessionId, setActiveSessionId] = useState<string | null>(null);
-
-  // removeAnnotation used by future tasks
-  void removeAnnotation;
 
   return (
     <div className="min-h-screen bg-bg text-text">
@@ -89,6 +87,13 @@ function App() {
               />
             )}
           </main>
+
+          {/* Annotation Bar */}
+          <AnnotationBar
+            pendingAnnotations={pendingAnnotations}
+            submittedAnnotations={submittedAnnotations}
+            onRemove={removeAnnotation}
+          />
         </div>
       </div>
     </div>
