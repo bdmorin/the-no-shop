@@ -1,0 +1,11 @@
+{
+  "name": "lat",
+  "description": "LLMAnnotationTerminal — Browser viewer for Claude Code output with structured annotation feedback loop. Haiku-powered response structuring, question detection, mermaid rendering, and XML annotation injection.",
+  "version": "0.1.0",
+  "author": {
+    "name": "Brian Morin"
+  },
+  "homepage": "https://github.com/bdmorin/the-no-shop",
+  "repository": "https://github.com/bdmorin/the-no-shop",
+  "license": "MIT"
+}
