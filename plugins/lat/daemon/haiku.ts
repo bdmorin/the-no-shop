@@ -5,7 +5,7 @@
  * typed blocks. Degrades gracefully on any error.
  */
 
-import type { LATResponse, Block } from "./types.ts";
+import type { LATResponse, Block } from "./types";
 
 const HAIKU_MODEL = "claude-haiku-4-5-20251001";
 const HAIKU_MAX_TOKENS = 4096;

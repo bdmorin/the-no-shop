@@ -10,8 +10,8 @@
  * - Serves the built SPA static files
  */
 
-import type { SessionMeta, LATResponse, Annotation } from "./types.ts";
-import { structureResponse } from "./haiku.ts";
+import type { SessionMeta, LATResponse, Annotation } from "./types";
+import { structureResponse } from "./haiku";
 
 const PORT = Number(process.env.LAT_PORT) || 4747;
 const DAEMON_START_TIME = Date.now();
