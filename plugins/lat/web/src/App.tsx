@@ -2,6 +2,7 @@ import { useState } from "react";
 import { useWebSocket } from "./hooks/useWebSocket";
 import { useAnnotations } from "./hooks/useAnnotations";
 import { SessionList } from "./components/SessionList";
+import { ResponseFeed } from "./components/ResponseFeed";
 import type { ConnectionStatus } from "./hooks/useWebSocket";
 
 function StatusDot({ status }: { status: ConnectionStatus }) {
@@ -35,9 +36,7 @@ function App() {
   const { pendingAnnotations, addAnnotation, removeAnnotation } = useAnnotations(onAnnotationEvent);
   const [activeSessionId, setActiveSessionId] = useState<string | null>(null);
 
-  // Suppress unused-var warnings for items used by future tasks
-  void responses;
-  void addAnnotation;
+  // removeAnnotation used by future tasks
   void removeAnnotation;
 
   return (
@@ -79,11 +78,15 @@ function App() {
           {/* Content */}
           <main className="flex-1 overflow-y-auto p-6">
             {activeSessionId === null ? (
-              <p className="text-text-muted">No responses yet.</p>
+              <div className="flex items-center justify-center h-full">
+                <p className="text-text-muted text-sm">Select a session to view responses.</p>
+              </div>
             ) : (
-              <p className="text-text-muted">
-                Response feed for session {activeSessionId}
-              </p>
+              <ResponseFeed
+                responses={responses[activeSessionId] || []}
+                onAnnotate={addAnnotation}
+                pendingAnnotations={pendingAnnotations}
+              />
             )}
           </main>
         </div>
