@@ -11,6 +11,7 @@
  */
 
 import type { SessionMeta, LATResponse, Annotation } from "./types.ts";
+import { structureResponse } from "./haiku.ts";
 
 const PORT = Number(process.env.LAT_PORT) || 4747;
 const DAEMON_START_TIME = Date.now();
@@ -216,6 +217,25 @@ const server = Bun.serve({
       }
 
       broadcast({ type: "new_response", data: entry });
+
+      // Async Haiku structuring (don't block the response)
+      structureResponse(entry.rawMarkdown, entry.responseId, sid)
+        .then((structured) => {
+          // Update stored response
+          const responses = responsesBySession.get(sid);
+          if (responses) {
+            const idx = responses.findIndex(r => r.responseId === structured.responseId);
+            if (idx >= 0) responses[idx] = structured;
+          }
+          broadcast({ type: "response_structured", data: structured });
+        })
+        .catch((err) => {
+          console.error("Haiku structuring failed:", err);
+          broadcast({
+            type: "response_structured",
+            data: { ...entry, structuringStatus: "failed" as const },
+          });
+        });
 
       return Response.json({ responseId }, { headers: corsHeaders });
     }
