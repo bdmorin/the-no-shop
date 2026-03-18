@@ -107,7 +107,7 @@ const server = Bun.serve({
   hostname: "127.0.0.1",
   port: PORT,
 
-  async fetch(req) {
+  async fetch(req: Request) {
     const url = new URL(req.url);
 
     // WebSocket upgrade
@@ -310,7 +310,7 @@ const server = Bun.serve({
   },
 
   websocket: {
-    open(ws) {
+    open(ws: any) {
       wsClients.add(ws);
 
       // Send full state on connect
@@ -337,7 +337,7 @@ const server = Bun.serve({
       );
     },
 
-    message(ws, message) {
+    message(ws: any, message: any) {
       try {
         const msg = JSON.parse(String(message));
         if (msg.type === "ping") {
@@ -346,7 +346,7 @@ const server = Bun.serve({
       } catch {}
     },
 
-    close(ws) {
+    close(ws: any) {
       wsClients.delete(ws);
     },
   },

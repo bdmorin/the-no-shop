@@ -1,0 +1,21 @@
+{
+  "name": "knowledge-web",
+  "description": "Create Obsidian investigation vaults from structured research. Transform knowledge graphs into interconnected markdown notes with bidirectional links, confidence scoring, custom callouts, canvas investigation boards, and mobile-first CSS.",
+  "version": "1.0.0",
+  "author": { "name": "Brian Morin" },
+  "homepage": "https://github.com/bdmorin/the-no-shop",
+  "repository": "https://github.com/bdmorin/the-no-shop",
+  "license": "MIT",
+  "keywords": [
+    "knowledge-management",
+    "obsidian",
+    "vault",
+    "investigation",
+    "research",
+    "knowledge-graph",
+    "intelligence",
+    "osint",
+    "backlinks",
+    "wikilinks"
+  ]
+}

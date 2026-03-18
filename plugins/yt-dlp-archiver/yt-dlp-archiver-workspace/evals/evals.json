@@ -1,0 +1,23 @@
+{
+  "skill_name": "yt-dlp-archiver",
+  "evals": [
+    {
+      "id": 1,
+      "prompt": "https://www.youtube.com/watch?v=iHKpVRCP_wI",
+      "expected_output": "Downloads 480p mp4, transcript, description, metadata, thumbnail to ~/src/youtube-archive/YYYYMMDD/. Detects debate content and runs analyze-debate fabric skill in addition to extract-wisdom and summarize.",
+      "files": []
+    },
+    {
+      "id": 2,
+      "prompt": "grab this for me https://www.youtube.com/watch?v=dQw4w9WgXcQ",
+      "expected_output": "Downloads Rick Astley Never Gonna Give You Up. Music video — no special content-type fabric skills beyond default extract-wisdom and summarize.",
+      "files": []
+    },
+    {
+      "id": 3,
+      "prompt": "https://www.youtube.com/watch?v=aircAruvnKk just the audio please",
+      "expected_output": "Downloads as mp3 (audio-only mode). This is a 3Blue1Brown neural network lecture — should detect education content and run summarize-lecture fabric skill.",
+      "files": []
+    }
+  ]
+}

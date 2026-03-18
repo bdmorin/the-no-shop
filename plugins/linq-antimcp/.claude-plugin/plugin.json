@@ -1,0 +1,11 @@
+{
+  "name": "linq-antimcp",
+  "description": "Send messages to your human operator via Linq (iMessage, RCS, SMS). Text, images, voice memos, reactions, typing indicators.",
+  "version": "0.1.0",
+  "author": {
+    "name": "Brian Morin"
+  },
+  "homepage": "https://github.com/bdmorin/the-no-shop",
+  "repository": "https://github.com/bdmorin/the-no-shop",
+  "license": "MIT"
+}

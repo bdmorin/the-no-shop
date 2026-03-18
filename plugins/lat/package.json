@@ -7,7 +7,7 @@
     "start": "bun run daemon/index.ts",
     "dev": "cd web && bun run dev",
     "build": "cd web && bun run build",
-    "postinstall": "cd web && bun install && bun run build"
+    "postinstall": "[ -d web ] && cd web && bun install && bun run build || true"
   },
   "devDependencies": {
     "@types/bun": "latest"
